@@ -7,7 +7,8 @@ using namespace std;
 #define SCREEN_HEIGHT 540
 SDL_Window *window = NULL;
 SDL_Renderer *renderer = NULL;
-bool gameIsRunning = false;
+bool gameIsRunning = false,
+     snakeAteFruit = false;
 
 // global variable for updating states of the game
 const int totalWaterTexture = 2,
@@ -17,8 +18,12 @@ const int totalWaterTexture = 2,
           boarderHeight = 15,
           fruitWidth = 30,
           fruitHeight = 30,
-          snakeWidth = 15,
-          snakeHeight = 15;
+          snakeWidth = 10,
+          snakeHeight = 10,
+          snakeVelocity = 10;
+int pickFruit = rand() % totalFruitTexture;
+char snakeCurrentDirection = 'r',
+     snakePreviousDirection; // by default snake is facing the right side
 
 vector<SDL_Rect> snakeBody;
 SDL_Rect rect1, rect2, rect3, rect4, rect5, rect6, rect7, rect8,
@@ -84,6 +89,8 @@ void destroyWindow(void)
     SDL_DestroyWindow(window);
     for (int i = 0; i < totalWaterTexture; i++)
         SDL_DestroyTexture(textureWater[i]);
+    for (int i = 0; i < totalBoarderTexture; i++)
+        SDL_DestroyTexture(textureBoarder[i]);
     for (int i = 0; i < totalFruitTexture; i++)
         SDL_DestroyTexture(textureFruit[i]);
     SDL_Quit();
@@ -92,15 +99,23 @@ void destroyWindow(void)
 class basicFunction
 {
 public:
-    void initializeBackGround();
-    void initializeFruit();
-    void initializeSnake();
+    void initializeBackground(void);
+    void initializeFruit(void);
+    void initializeSnake(void);
 };
 
 class drawFunction
 {
 public:
     void drawBackground(void);
+    void drawFruit(void);
+};
+
+class Snake
+{
+public:
+    void updateSnakePosition(void);
+    void updateSnakeSize(void);
 };
 
 void Update(void)
@@ -109,6 +124,15 @@ void Update(void)
 
     drawFunction draw;
     draw.drawBackground();
+    draw.drawFruit();
+
+    Snake snake;
+    snake.updateSnakePosition();
+    if (snakeAteFruit)
+    {
+        snake.updateSnakeSize();
+        snakeAteFruit = false;
+    }
 
     SDL_Delay(20);
     SDL_RenderPresent(renderer);
@@ -118,7 +142,7 @@ int main(int argc, char **argv)
 {
     gameIsRunning = initializeWindow();
     basicFunction initilize;
-    initilize.initializeBackGround();
+    initilize.initializeBackground();
     initilize.initializeFruit();
     initilize.initializeSnake();
 
@@ -133,7 +157,7 @@ int main(int argc, char **argv)
 
 // implimentation of all prototype functions
 
-void basicFunction ::initializeBackGround(void)
+void basicFunction ::initializeBackground(void)
 {
     // intitial position of the background image
     rect1.x = 0;
@@ -243,4 +267,126 @@ void drawFunction ::drawBackground(void)
     SDL_RenderCopy(renderer, textureBoarder[0], NULL, &rect7);
     SDL_RenderCopy(renderer, textureBoarder[0], NULL, &rect8);
     SDL_SetTextureBlendMode(textureBoarder[0], SDL_BLENDMODE_ADD);
+}
+
+void drawFunction ::drawFruit(void)
+{
+    // snake ate the fruit
+    if (((snakeBody[0].x + snakeWidth) >= fruitControl.x && snakeBody[0].x <= (fruitControl.x + fruitWidth)) &&
+        ((snakeBody[0].y + snakeHeight) >= fruitControl.y && snakeBody[0].y <= (fruitControl.y + fruitHeight)))
+    {
+        snakeAteFruit = true;
+        // spawn new fruit. i.e., pick a random fruit
+        pickFruit = rand() % totalFruitTexture;
+        fruitControl.x = boarderWidth + (rand() % (SCREEN_WIDTH - fruitWidth - 2 * boarderWidth));
+        fruitControl.y = boarderHeight + (rand() % (SCREEN_HEIGHT - fruitHeight - 2 * boarderHeight));
+    }
+
+    SDL_RenderCopy(renderer, textureFruit[pickFruit], NULL, &fruitControl);
+}
+
+void Snake ::updateSnakePosition(void)
+{
+    switch (snakeCurrentDirection)
+    {
+    case 'r':
+        snakeBody[0].x += snakeVelocity;
+        for (int i = 1; i < snakeBody.size(); i++)
+        {
+            if (snakeBody[i].y == snakeBody[i - 1].y)
+                snakeBody[i].x += snakeVelocity;
+            else
+            {
+                if (snakePreviousDirection == 'u')
+                    snakeBody[i].y -= snakeVelocity;
+                else
+                    snakeBody[i].y += snakeVelocity;
+            }
+        }
+        break;
+    case 'l':
+        snakeBody[0].x -= snakeVelocity;
+        for (int i = 1; i < snakeBody.size(); i++)
+        {
+            if (snakeBody[i].y == snakeBody[i - 1].y)
+                snakeBody[i].x -= snakeVelocity;
+            else
+            {
+                if (snakePreviousDirection == 'u')
+                    snakeBody[i].y -= snakeVelocity;
+                else
+                    snakeBody[i].y += snakeVelocity;
+            }
+        }
+        break;
+    case 'u':
+        snakeBody[0].y -= snakeVelocity;
+        for (int i = 1; i < snakeBody.size(); i++)
+        {
+            if (snakeBody[i].x == snakeBody[i - 1].x)
+                snakeBody[i].y -= snakeVelocity;
+            else
+            {
+                if (snakePreviousDirection == 'r')
+                    snakeBody[i].x += snakeVelocity;
+                else
+                    snakeBody[i].x -= snakeVelocity;
+            }
+        }
+        break;
+    case 'd':
+        snakeBody[0].y += snakeVelocity;
+        for (int i = 1; i < snakeBody.size(); i++)
+        {
+            if (snakeBody[i].x == snakeBody[i - 1].x)
+                snakeBody[i].y += snakeVelocity;
+            else
+            {
+                if (snakePreviousDirection == 'r')
+                    snakeBody[i].x += snakeVelocity;
+                else
+                    snakeBody[i].x -= snakeVelocity;
+            }
+        }
+        break;
+    }
+
+    SDL_SetRenderDrawColor(renderer, 0, 255, 255, SDL_ALPHA_OPAQUE);
+    for (int i = 0; i < snakeBody.size(); i++)
+        SDL_RenderFillRect(renderer, &snakeBody[i]);
+}
+
+void Snake::updateSnakeSize(void)
+{
+    SDL_Rect snakeBodyPart;
+    switch (snakeCurrentDirection)
+    {
+    case 'r':
+        snakeBodyPart = {
+            snakeBody[snakeBody.size() - 1].x - snakeWidth,
+            snakeBody[snakeBody.size() - 1].y,
+            snakeWidth, snakeHeight};
+        break;
+    case 'l':
+        snakeBodyPart = {
+            snakeBody[snakeBody.size() - 1].x + snakeWidth,
+            snakeBody[snakeBody.size() - 1].y,
+            snakeWidth, snakeHeight};
+        break;
+    case 'u':
+        snakeBodyPart = {
+            snakeBody[snakeBody.size() - 1].x,
+            snakeBody[snakeBody.size() - 1].y + snakeHeight,
+            snakeWidth, snakeHeight};
+        break;
+    case 'd':
+        snakeBodyPart = {
+            snakeBody[snakeBody.size() - 1].x,
+            snakeBody[snakeBody.size() - 1].y - snakeHeight,
+            snakeWidth, snakeHeight};
+        break;
+    }
+
+    // the snake ate a fruit increase size
+    snakeBody.push_back(snakeBodyPart);
 }
