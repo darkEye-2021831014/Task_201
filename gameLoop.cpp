@@ -9,12 +9,18 @@ SDL_Window *window = NULL;
 SDL_Renderer *renderer = NULL;
 bool gameIsRunning = false,
      snakeAteFruit = false,
-     keyWasPressed = false;
+     keyWasPressed = false,
+     gameIsPaused = false;
 
 // global variable for updating states of the game
 const int totalWaterTexture = 2,
           totalBoarderTexture = 1,
+          totalMenuTexture = 1,
           totalFruitTexture = 4,
+          snakeColorRed = 100,
+          snakeColorGreen = 255,
+          snakeColorBlue = 100,
+          snakeColorAlpha = SDL_ALPHA_OPAQUE,
           boarderWidth = 15,
           boarderHeight = 15,
           fruitWidth = 30,
@@ -27,10 +33,11 @@ char snakeCurrentDirection = 'r', // by default snake is facing the right side
     pressedKey;
 
 vector<SDL_Rect> snakeBody;
-SDL_Rect rect1, rect2, rect3, rect4, rect5, rect6, rect7, rect8,
+SDL_Rect rect1, rect2, rect3, rect4, rect5, rect6, rect7, rect8, rect9,
     fruitControl;
 SDL_Texture *textureWater[totalWaterTexture],
     *textureBoarder[totalBoarderTexture],
+    *textureMenu[totalMenuTexture],
     *textureFruit[totalFruitTexture];
 
 bool initializeWindow(void)
@@ -78,27 +85,39 @@ void processInput(void)
             gameIsRunning = false;
             break;
         case SDL_KEYDOWN:
+            keyWasPressed = true;
+
             switch (event.key.keysym.sym)
             {
             case SDLK_UP:
             case SDLK_w:
-                keyWasPressed = true;
                 pressedKey = 'w';
                 break;
             case SDLK_DOWN:
             case SDLK_s:
-                keyWasPressed = true;
                 pressedKey = 's';
                 break;
             case SDLK_RIGHT:
             case SDLK_d:
-                keyWasPressed = true;
                 pressedKey = 'd';
                 break;
             case SDLK_LEFT:
             case SDLK_a:
-                keyWasPressed = true;
                 pressedKey = 'a';
+                break;
+            case SDLK_SPACE:
+            case SDLK_k:
+                keyWasPressed = false;
+                if (gameIsPaused)
+                    gameIsPaused = false;
+                else
+                    gameIsPaused = true;
+                break;
+            case SDLK_q:
+                gameIsRunning = false;
+                break;
+            default:
+                keyWasPressed = false;
                 break;
             }
             break;
@@ -118,6 +137,8 @@ void destroyWindow(void)
         SDL_DestroyTexture(textureBoarder[i]);
     for (int i = 0; i < totalFruitTexture; i++)
         SDL_DestroyTexture(textureFruit[i]);
+    for (int i = 0; i < totalMenuTexture; i++)
+        SDL_DestroyTexture(textureMenu[i]);
     SDL_Quit();
 }
 
@@ -143,6 +164,14 @@ public:
     void updateSnakeSize(void);
     void updateSnakeDirection(char);
 };
+
+void pauseScreen(void)
+{
+    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+    SDL_RenderClear(renderer);
+    SDL_RenderCopy(renderer, textureMenu[0], NULL, &rect9);
+    SDL_RenderPresent(renderer);
+}
 
 void Update(void)
 {
@@ -180,7 +209,10 @@ int main(int argc, char **argv)
     while (gameIsRunning)
     {
         processInput();
-        Update();
+        if (!gameIsPaused)
+            Update();
+        else
+            pauseScreen();
     }
 
     destroyWindow();
@@ -217,7 +249,7 @@ void basicFunction ::initializeBackground(void)
     textureWater[1] = SDL_CreateTextureFromSurface(renderer, surface);
     SDL_FreeSurface(surface);
 
-    // draw boarder
+    // initialize boarder
     rect5.x = 0;
     rect5.y = 0;
     rect5.w = SCREEN_WIDTH;
@@ -239,6 +271,14 @@ void basicFunction ::initializeBackground(void)
     rect8.h = SCREEN_HEIGHT - (2 * rect8.y);
 
     textureBoarder[0] = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP("./Background/boarder.bmp"));
+
+    // initialize pause screen
+    rect9.w = 190;
+    rect9.h = 192;
+    rect9.x = (SCREEN_WIDTH - rect9.w) / 2;
+    rect9.y = (SCREEN_HEIGHT - rect9.h) / 2;
+
+    textureMenu[0] = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP("./Background/pauseScreen.bmp"));
 }
 
 void basicFunction ::initializeFruit(void)
@@ -354,7 +394,7 @@ void Snake ::updateSnakePosition(void)
         break;
     }
 
-    SDL_SetRenderDrawColor(renderer, 0, 255, 255, SDL_ALPHA_OPAQUE);
+    SDL_SetRenderDrawColor(renderer, snakeColorRed, snakeColorGreen, snakeColorBlue, snakeColorAlpha);
     for (int i = 0; i < snakeBody.size(); i++)
         SDL_RenderFillRect(renderer, &snakeBody[i]);
 }
