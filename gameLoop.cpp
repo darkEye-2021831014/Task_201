@@ -8,7 +8,8 @@ using namespace std;
 SDL_Window *window = NULL;
 SDL_Renderer *renderer = NULL;
 bool gameIsRunning = false,
-     snakeAteFruit = false;
+     snakeAteFruit = false,
+     keyWasPressed = false;
 
 // global variable for updating states of the game
 const int totalWaterTexture = 2,
@@ -18,12 +19,12 @@ const int totalWaterTexture = 2,
           boarderHeight = 15,
           fruitWidth = 30,
           fruitHeight = 30,
-          snakeWidth = 10,
-          snakeHeight = 10,
-          snakeVelocity = 10;
+          snakeWidth = 20,
+          snakeHeight = 20,
+          snakeVelocity = 8;
 int pickFruit = rand() % totalFruitTexture;
-char snakeCurrentDirection = 'r',
-     snakePreviousDirection; // by default snake is facing the right side
+char snakeCurrentDirection = 'r', // by default snake is facing the right side
+    pressedKey;
 
 vector<SDL_Rect> snakeBody;
 SDL_Rect rect1, rect2, rect3, rect4, rect5, rect6, rect7, rect8,
@@ -71,11 +72,35 @@ void processInput(void)
     SDL_Event event;
     while (SDL_PollEvent(&event))
     {
-        int diff = 0;
         switch (event.type)
         {
         case SDL_QUIT:
             gameIsRunning = false;
+            break;
+        case SDL_KEYDOWN:
+            switch (event.key.keysym.sym)
+            {
+            case SDLK_UP:
+            case SDLK_w:
+                keyWasPressed = true;
+                pressedKey = 'w';
+                break;
+            case SDLK_DOWN:
+            case SDLK_s:
+                keyWasPressed = true;
+                pressedKey = 's';
+                break;
+            case SDLK_RIGHT:
+            case SDLK_d:
+                keyWasPressed = true;
+                pressedKey = 'd';
+                break;
+            case SDLK_LEFT:
+            case SDLK_a:
+                keyWasPressed = true;
+                pressedKey = 'a';
+                break;
+            }
             break;
         default:
             break;
@@ -116,6 +141,7 @@ class Snake
 public:
     void updateSnakePosition(void);
     void updateSnakeSize(void);
+    void updateSnakeDirection(char);
 };
 
 void Update(void)
@@ -132,6 +158,11 @@ void Update(void)
     {
         snake.updateSnakeSize();
         snakeAteFruit = false;
+    }
+    if (keyWasPressed)
+    {
+        snake.updateSnakeDirection(pressedKey);
+        keyWasPressed = false;
     }
 
     SDL_Delay(20);
@@ -290,64 +321,36 @@ void Snake ::updateSnakePosition(void)
     switch (snakeCurrentDirection)
     {
     case 'r':
-        snakeBody[0].x += snakeVelocity;
-        for (int i = 1; i < snakeBody.size(); i++)
+        for (int i = snakeBody.size() - 1; i >= 1; i--)
         {
-            if (snakeBody[i].y == snakeBody[i - 1].y)
-                snakeBody[i].x += snakeVelocity;
-            else
-            {
-                if (snakePreviousDirection == 'u')
-                    snakeBody[i].y -= snakeVelocity;
-                else
-                    snakeBody[i].y += snakeVelocity;
-            }
+            snakeBody[i].x = snakeBody[i - 1].x;
+            snakeBody[i].y = snakeBody[i - 1].y;
         }
+        snakeBody[0].x += snakeVelocity;
         break;
     case 'l':
-        snakeBody[0].x -= snakeVelocity;
-        for (int i = 1; i < snakeBody.size(); i++)
+        for (int i = snakeBody.size() - 1; i >= 1; i--)
         {
-            if (snakeBody[i].y == snakeBody[i - 1].y)
-                snakeBody[i].x -= snakeVelocity;
-            else
-            {
-                if (snakePreviousDirection == 'u')
-                    snakeBody[i].y -= snakeVelocity;
-                else
-                    snakeBody[i].y += snakeVelocity;
-            }
+            snakeBody[i].x = snakeBody[i - 1].x;
+            snakeBody[i].y = snakeBody[i - 1].y;
         }
+        snakeBody[0].x -= snakeVelocity;
         break;
     case 'u':
-        snakeBody[0].y -= snakeVelocity;
-        for (int i = 1; i < snakeBody.size(); i++)
+        for (int i = snakeBody.size() - 1; i >= 1; i--)
         {
-            if (snakeBody[i].x == snakeBody[i - 1].x)
-                snakeBody[i].y -= snakeVelocity;
-            else
-            {
-                if (snakePreviousDirection == 'r')
-                    snakeBody[i].x += snakeVelocity;
-                else
-                    snakeBody[i].x -= snakeVelocity;
-            }
+            snakeBody[i].x = snakeBody[i - 1].x;
+            snakeBody[i].y = snakeBody[i - 1].y;
         }
+        snakeBody[0].y -= snakeVelocity;
         break;
     case 'd':
-        snakeBody[0].y += snakeVelocity;
-        for (int i = 1; i < snakeBody.size(); i++)
+        for (int i = snakeBody.size() - 1; i >= 1; i--)
         {
-            if (snakeBody[i].x == snakeBody[i - 1].x)
-                snakeBody[i].y += snakeVelocity;
-            else
-            {
-                if (snakePreviousDirection == 'r')
-                    snakeBody[i].x += snakeVelocity;
-                else
-                    snakeBody[i].x -= snakeVelocity;
-            }
+            snakeBody[i].x = snakeBody[i - 1].x;
+            snakeBody[i].y = snakeBody[i - 1].y;
         }
+        snakeBody[0].y += snakeVelocity;
         break;
     }
 
@@ -389,4 +392,27 @@ void Snake::updateSnakeSize(void)
 
     // the snake ate a fruit increase size
     snakeBody.push_back(snakeBodyPart);
+}
+
+void Snake ::updateSnakeDirection(char key)
+{
+    switch (key)
+    {
+    case 'w': // up direction
+        if (snakeCurrentDirection != 'u' && snakeCurrentDirection != 'd')
+            snakeCurrentDirection = 'u';
+        break;
+    case 's': // down direction
+        if (snakeCurrentDirection != 'd' && snakeCurrentDirection != 'u')
+            snakeCurrentDirection = 'd';
+        break;
+    case 'd': // right direction
+        if (snakeCurrentDirection != 'r' && snakeCurrentDirection != 'l')
+            snakeCurrentDirection = 'r';
+        break;
+    case 'a': // left direction
+        if (snakeCurrentDirection != 'l' && snakeCurrentDirection != 'r')
+            snakeCurrentDirection = 'l';
+        break;
+    }
 }
