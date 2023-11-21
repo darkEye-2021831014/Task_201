@@ -330,8 +330,8 @@ void basicFunction ::initializeFruit(void)
 
     fruitControl.w = fruitWidth;
     fruitControl.h = fruitHeight;
-    fruitControl.x = boarderWidth + (rand() % (SCREEN_WIDTH - fruitWidth - 2 * boarderWidth));
-    fruitControl.y = boarderHeight + (rand() % (SCREEN_HEIGHT - fruitHeight - 2 * boarderHeight));
+    fruitControl.x = boarderWidth + (rand() % (SCREEN_WIDTH - fruitWidth - boarderWidth - scoreTextRect.w));
+    fruitControl.y = scoreTextRect.h + (rand() % (SCREEN_HEIGHT - fruitHeight - boarderHeight - scoreTextRect.h));
 }
 
 void basicFunction ::initializeSnake(void)
@@ -390,8 +390,8 @@ void drawFunction ::drawFruit(void)
         snakeAteFruit = true;
         // spawn new fruit. i.e., pick a random fruit
         pickFruit = rand() % totalFruitTexture;
-        fruitControl.x = boarderWidth + (rand() % (SCREEN_WIDTH - fruitWidth - 2 * boarderWidth));
-        fruitControl.y = boarderHeight + (rand() % (SCREEN_HEIGHT - fruitHeight - 2 * boarderHeight));
+        fruitControl.x = boarderWidth + (rand() % (SCREEN_WIDTH - fruitWidth - boarderWidth - scoreTextRect.w));
+        fruitControl.y = scoreTextRect.h + (rand() % (SCREEN_HEIGHT - fruitHeight - boarderHeight - scoreTextRect.h));
     }
 
     SDL_RenderCopy(renderer, textureFruit[pickFruit], NULL, &fruitControl);
