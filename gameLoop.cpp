@@ -1,4 +1,6 @@
 #include <SDL2/SDL.h>
+#include <SDL2/SDL_ttf.h>
+#include <string>
 #include <stdio.h>
 #include <vector>
 using namespace std;
@@ -8,9 +10,12 @@ using namespace std;
 SDL_Window *window = NULL;
 SDL_Renderer *renderer = NULL;
 bool gameIsRunning = false,
+     gameIsStarted = false,
      snakeAteFruit = false,
      keyWasPressed = false,
-     gameIsPaused = false;
+     gameIsPaused = false,
+     fontIsInitialized = false,
+     increaseOpacity = false;
 
 // global variable for updating states of the game
 const int totalWaterTexture = 2,
@@ -28,51 +33,19 @@ const int totalWaterTexture = 2,
           snakeWidth = 20,
           snakeHeight = 20,
           snakeVelocity = 8;
-int pickFruit = rand() % totalFruitTexture;
+int pickFruit = rand() % totalFruitTexture,
+    totalScore = 0;
+Uint8 textOpacity = 255;
 char snakeCurrentDirection = 'r', // by default snake is facing the right side
     pressedKey;
 
 vector<SDL_Rect> snakeBody;
-SDL_Rect rect1, rect2, rect3, rect4, rect5, rect6, rect7, rect8, rect9,
-    fruitControl;
+SDL_Rect rect1, rect2, rect3, rect4, rect5, rect6, rect7, rect8,
+    fruitControl, middleScreenTextRect, scoreTextRect;
 SDL_Texture *textureWater[totalWaterTexture],
     *textureBoarder[totalBoarderTexture],
     *textureMenu[totalMenuTexture],
     *textureFruit[totalFruitTexture];
-
-bool initializeWindow(void)
-{
-
-    if (SDL_Init(SDL_INIT_VIDEO) < 0)
-    {
-        printf("Error: SDL Failed to initialize\n SDL Error: %s", SDL_GetError());
-        return false;
-    }
-
-    window = SDL_CreateWindow(
-        "Snake Game",
-        SDL_WINDOWPOS_CENTERED,
-        SDL_WINDOWPOS_CENTERED,
-        SCREEN_WIDTH,
-        SCREEN_HEIGHT,
-        0);
-
-    if (!window)
-    {
-        printf("Error: Failed to open window\nSDL Error: %s", SDL_GetError());
-        return false;
-    }
-
-    renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
-
-    if (!renderer)
-    {
-        printf("Error: Failed to create renderer\nSDl Error: %s", SDL_GetError());
-        return false;
-    }
-
-    return true;
-}
 
 void processInput(void)
 {
@@ -108,10 +81,15 @@ void processInput(void)
             case SDLK_SPACE:
             case SDLK_k:
                 keyWasPressed = false;
-                if (gameIsPaused)
-                    gameIsPaused = false;
+                if (!gameIsStarted)
+                    gameIsStarted = true;
                 else
-                    gameIsPaused = true;
+                {
+                    if (gameIsPaused)
+                        gameIsPaused = false;
+                    else
+                        gameIsPaused = true;
+                }
                 break;
             case SDLK_q:
                 gameIsRunning = false;
@@ -139,12 +117,15 @@ void destroyWindow(void)
         SDL_DestroyTexture(textureFruit[i]);
     for (int i = 0; i < totalMenuTexture; i++)
         SDL_DestroyTexture(textureMenu[i]);
+    TTF_Quit();
     SDL_Quit();
 }
 
 class basicFunction
 {
 public:
+    bool initializeWindow(void);
+    bool initializeFont(void);
     void initializeBackground(void);
     void initializeFruit(void);
     void initializeSnake(void);
@@ -155,44 +136,58 @@ class drawFunction
 public:
     void drawBackground(void);
     void drawFruit(void);
+    SDL_Texture *drawText(const char *, const char *, int, SDL_Color);
+    void drawMiddleScreenText(drawFunction &, const char *);
+    void drawScore(drawFunction &, const char *);
+
+private:
+    SDL_Texture *texture;
 };
 
 class Snake
 {
 public:
-    void updateSnakePosition(void);
+    void updateSnakePosition(int);
     void updateSnakeSize(void);
     void updateSnakeDirection(char);
 };
-
-void pauseScreen(void)
-{
-    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-    SDL_RenderClear(renderer);
-    SDL_RenderCopy(renderer, textureMenu[0], NULL, &rect9);
-    SDL_RenderPresent(renderer);
-}
 
 void Update(void)
 {
     SDL_RenderClear(renderer);
 
     drawFunction draw;
+    Snake snake;
     draw.drawBackground();
     draw.drawFruit();
+    draw.drawScore(draw, to_string(totalScore).c_str()); // convert int to string then character array then pass to drawScore
 
-    Snake snake;
-    snake.updateSnakePosition();
-    if (snakeAteFruit)
+    if (gameIsStarted)
     {
-        snake.updateSnakeSize();
-        snakeAteFruit = false;
+        if (gameIsPaused)
+            draw.drawMiddleScreenText(draw, "Press Space To Resume"); // draw pause screen
+        else
+        {
+            if (keyWasPressed)
+            {
+                snake.updateSnakeDirection(pressedKey);
+                keyWasPressed = false;
+            }
+            snake.updateSnakePosition(snakeVelocity);
+        }
+
+        if (snakeAteFruit)
+        {
+            totalScore++;
+            snake.updateSnakeSize();
+            snakeAteFruit = false;
+        }
     }
-    if (keyWasPressed)
-    {
-        snake.updateSnakeDirection(pressedKey);
-        keyWasPressed = false;
-    }
+    else
+        draw.drawMiddleScreenText(draw, "Press Space To Start");
+
+    if (gameIsPaused || !gameIsStarted)
+        snake.updateSnakePosition(0); // This Will Draw Current State Of The Snake
 
     SDL_Delay(20);
     SDL_RenderPresent(renderer);
@@ -200,8 +195,9 @@ void Update(void)
 
 int main(int argc, char **argv)
 {
-    gameIsRunning = initializeWindow();
     basicFunction initilize;
+    gameIsRunning = initilize.initializeWindow();
+    fontIsInitialized = initilize.initializeFont();
     initilize.initializeBackground();
     initilize.initializeFruit();
     initilize.initializeSnake();
@@ -209,19 +205,65 @@ int main(int argc, char **argv)
     while (gameIsRunning)
     {
         processInput();
-        if (!gameIsPaused)
-            Update();
-        else
-            pauseScreen();
+        Update();
     }
 
     destroyWindow();
 }
 
 // implimentation of all prototype functions
+bool basicFunction ::initializeWindow(void)
+{
+    if (SDL_Init(SDL_INIT_VIDEO) < 0)
+    {
+        printf("Error: SDL Failed to initialize\n SDL Error: %s", SDL_GetError());
+        return false;
+    }
+
+    window = SDL_CreateWindow(
+        "Snake Game",
+        SDL_WINDOWPOS_CENTERED,
+        SDL_WINDOWPOS_CENTERED,
+        SCREEN_WIDTH,
+        SCREEN_HEIGHT,
+        0);
+
+    if (!window)
+    {
+        printf("Error: Failed to open window\nSDL Error: %s", SDL_GetError());
+        return false;
+    }
+
+    renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+
+    if (!renderer)
+    {
+        printf("Error: Failed to create renderer\nSDl Error: %s", SDL_GetError());
+        return false;
+    }
+
+    return true;
+}
+
+bool basicFunction ::initializeFont(void)
+{
+    if (TTF_Init() == -1)
+    {
+        printf("TTF failed to initialize\nError: %s\n",
+               TTF_GetError());
+        return false;
+    }
+    return true;
+}
 
 void basicFunction ::initializeBackground(void)
 {
+    // initialize score showing rectangle
+    scoreTextRect.w = 60;
+    scoreTextRect.h = 70;
+    scoreTextRect.x = SCREEN_WIDTH - scoreTextRect.w;
+    scoreTextRect.y = 0;
+
     // intitial position of the background image
     rect1.x = 0;
     rect1.y = 0;
@@ -252,7 +294,7 @@ void basicFunction ::initializeBackground(void)
     // initialize boarder
     rect5.x = 0;
     rect5.y = 0;
-    rect5.w = SCREEN_WIDTH;
+    rect5.w = SCREEN_WIDTH - scoreTextRect.w;
     rect5.h = boarderHeight;
 
     rect6.w = SCREEN_WIDTH;
@@ -267,18 +309,16 @@ void basicFunction ::initializeBackground(void)
 
     rect8.w = boarderWidth;
     rect8.x = SCREEN_WIDTH - rect8.w;
-    rect8.y = boarderHeight;
-    rect8.h = SCREEN_HEIGHT - (2 * rect8.y);
+    rect8.y = scoreTextRect.h;
+    rect8.h = SCREEN_HEIGHT - rect8.y - boarderHeight;
 
     textureBoarder[0] = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP("./Background/boarder.bmp"));
 
-    // initialize pause screen
-    rect9.w = 190;
-    rect9.h = 192;
-    rect9.x = (SCREEN_WIDTH - rect9.w) / 2;
-    rect9.y = (SCREEN_HEIGHT - rect9.h) / 2;
-
-    textureMenu[0] = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP("./Background/pauseScreen.bmp"));
+    // intialize middle screen message rectangle
+    middleScreenTextRect.w = 500;
+    middleScreenTextRect.h = 100;
+    middleScreenTextRect.x = (SCREEN_WIDTH - middleScreenTextRect.w) / 2;
+    middleScreenTextRect.y = (SCREEN_HEIGHT - middleScreenTextRect.h) / 2;
 }
 
 void basicFunction ::initializeFruit(void)
@@ -337,6 +377,7 @@ void drawFunction ::drawBackground(void)
     SDL_RenderCopy(renderer, textureBoarder[0], NULL, &rect6);
     SDL_RenderCopy(renderer, textureBoarder[0], NULL, &rect7);
     SDL_RenderCopy(renderer, textureBoarder[0], NULL, &rect8);
+    SDL_RenderCopy(renderer, textureBoarder[0], NULL, &scoreTextRect);
     SDL_SetTextureBlendMode(textureBoarder[0], SDL_BLENDMODE_ADD);
 }
 
@@ -356,42 +397,80 @@ void drawFunction ::drawFruit(void)
     SDL_RenderCopy(renderer, textureFruit[pickFruit], NULL, &fruitControl);
 }
 
-void Snake ::updateSnakePosition(void)
+SDL_Texture *drawFunction ::drawText(const char *fontFile, const char *message, int size, SDL_Color textColor)
 {
-    switch (snakeCurrentDirection)
+    TTF_Font *font = TTF_OpenFont(fontFile, size);
+    SDL_Surface *surface = TTF_RenderText_Solid(font, message, textColor);
+    texture = SDL_CreateTextureFromSurface(renderer, surface);
+
+    TTF_CloseFont(font);
+    SDL_FreeSurface(surface);
+
+    return texture;
+}
+
+void drawFunction ::drawMiddleScreenText(drawFunction &draw, const char *message)
+{
+    // create a blinking effect with opacity of the text
+    if (textOpacity < 80)
+        increaseOpacity = true;
+    if (textOpacity >= 250)
+        increaseOpacity = false;
+    if (increaseOpacity)
+        textOpacity += 10;
+    else
+        textOpacity -= 10;
+    SDL_RenderCopy(renderer,
+                   draw.drawText("Fonts/novaMono.ttf", message, 24, {255, 255, 255, textOpacity}),
+                   NULL, &middleScreenTextRect);
+}
+
+void drawFunction ::drawScore(drawFunction &draw, const char *score)
+{
+    SDL_RenderCopy(renderer,
+                   draw.drawText("Fonts/unispace.ttf", score, 18, {0, 0, 0, 255}),
+                   NULL, &scoreTextRect);
+}
+
+void Snake ::updateSnakePosition(int snakeVelocity)
+{
+    if (snakeVelocity)
     {
-    case 'r':
-        for (int i = snakeBody.size() - 1; i >= 1; i--)
+        switch (snakeCurrentDirection)
         {
-            snakeBody[i].x = snakeBody[i - 1].x;
-            snakeBody[i].y = snakeBody[i - 1].y;
+        case 'r':
+            for (int i = snakeBody.size() - 1; i >= 1; i--)
+            {
+                snakeBody[i].x = snakeBody[i - 1].x;
+                snakeBody[i].y = snakeBody[i - 1].y;
+            }
+            snakeBody[0].x += snakeVelocity;
+            break;
+        case 'l':
+            for (int i = snakeBody.size() - 1; i >= 1; i--)
+            {
+                snakeBody[i].x = snakeBody[i - 1].x;
+                snakeBody[i].y = snakeBody[i - 1].y;
+            }
+            snakeBody[0].x -= snakeVelocity;
+            break;
+        case 'u':
+            for (int i = snakeBody.size() - 1; i >= 1; i--)
+            {
+                snakeBody[i].x = snakeBody[i - 1].x;
+                snakeBody[i].y = snakeBody[i - 1].y;
+            }
+            snakeBody[0].y -= snakeVelocity;
+            break;
+        case 'd':
+            for (int i = snakeBody.size() - 1; i >= 1; i--)
+            {
+                snakeBody[i].x = snakeBody[i - 1].x;
+                snakeBody[i].y = snakeBody[i - 1].y;
+            }
+            snakeBody[0].y += snakeVelocity;
+            break;
         }
-        snakeBody[0].x += snakeVelocity;
-        break;
-    case 'l':
-        for (int i = snakeBody.size() - 1; i >= 1; i--)
-        {
-            snakeBody[i].x = snakeBody[i - 1].x;
-            snakeBody[i].y = snakeBody[i - 1].y;
-        }
-        snakeBody[0].x -= snakeVelocity;
-        break;
-    case 'u':
-        for (int i = snakeBody.size() - 1; i >= 1; i--)
-        {
-            snakeBody[i].x = snakeBody[i - 1].x;
-            snakeBody[i].y = snakeBody[i - 1].y;
-        }
-        snakeBody[0].y -= snakeVelocity;
-        break;
-    case 'd':
-        for (int i = snakeBody.size() - 1; i >= 1; i--)
-        {
-            snakeBody[i].x = snakeBody[i - 1].x;
-            snakeBody[i].y = snakeBody[i - 1].y;
-        }
-        snakeBody[0].y += snakeVelocity;
-        break;
     }
 
     SDL_SetRenderDrawColor(renderer, snakeColorRed, snakeColorGreen, snakeColorBlue, snakeColorAlpha);
