@@ -11,6 +11,7 @@ SDL_Window *window = NULL;
 SDL_Renderer *renderer = NULL;
 bool gameIsRunning = false,
      gameIsStarted = false,
+     collisionDetected = false,
      snakeAteFruit = false,
      keyWasPressed = false,
      gameIsPaused = false,
@@ -81,7 +82,7 @@ void processInput(void)
             case SDLK_SPACE:
             case SDLK_k:
                 keyWasPressed = false;
-                if (!gameIsStarted)
+                if (!gameIsStarted && !collisionDetected)
                     gameIsStarted = true;
                 else
                 {
@@ -152,15 +153,31 @@ public:
     void updateSnakeDirection(char);
 };
 
+class Collision
+{
+public:
+    bool detectCollision(void);
+};
+
 void Update(void)
 {
     SDL_RenderClear(renderer);
 
     drawFunction draw;
     Snake snake;
+    Collision collision;
     draw.drawBackground();
     draw.drawFruit();
     draw.drawScore(draw, to_string(totalScore).c_str()); // convert int to string then character array then pass to drawScore
+
+    // detect collision
+    if (collision.detectCollision())
+    {
+        string message = "    Game Over\n  Final Score: " + to_string(totalScore) + "\n Press Q To Exit";
+        draw.drawMiddleScreenText(draw, message.c_str());
+        gameIsStarted = false;
+        collisionDetected = true;
+    }
 
     if (gameIsStarted)
     {
@@ -183,10 +200,10 @@ void Update(void)
             snakeAteFruit = false;
         }
     }
-    else
+    else if (!collisionDetected)
         draw.drawMiddleScreenText(draw, "Press Space To Start");
 
-    if (gameIsPaused || !gameIsStarted)
+    if (gameIsPaused || !gameIsStarted || collisionDetected)
         snake.updateSnakePosition(0); // This Will Draw Current State Of The Snake
 
     SDL_Delay(20);
@@ -339,7 +356,7 @@ void basicFunction ::initializeSnake(void)
     SDL_Rect initialSnake;
     initialSnake.w = snakeWidth;
     initialSnake.h = snakeHeight;
-    initialSnake.x = boarderWidth;
+    initialSnake.x = boarderWidth + 1;
     initialSnake.y = (SCREEN_HEIGHT - initialSnake.w) / 2;
 
     snakeBody.push_back(initialSnake);
@@ -400,9 +417,8 @@ void drawFunction ::drawFruit(void)
 SDL_Texture *drawFunction ::drawText(const char *fontFile, const char *message, int size, SDL_Color textColor)
 {
     TTF_Font *font = TTF_OpenFont(fontFile, size);
-    SDL_Surface *surface = TTF_RenderText_Solid(font, message, textColor);
+    SDL_Surface *surface = TTF_RenderText_Blended_Wrapped(font, message, textColor, middleScreenTextRect.w / 2 + 50);
     texture = SDL_CreateTextureFromSurface(renderer, surface);
-
     TTF_CloseFont(font);
     SDL_FreeSurface(surface);
 
@@ -534,4 +550,36 @@ void Snake ::updateSnakeDirection(char key)
             snakeCurrentDirection = 'l';
         break;
     }
+}
+
+bool Collision::detectCollision(void)
+{
+    // find the(x,y) of the center of snake head
+    int headX = (snakeBody[0].x + snakeBody[0].w) / 2,
+        headY = (snakeBody[0].y + snakeBody[0].h) / 2,
+        distanceFromBody = 0, bodyX = 0, bodyY = 0;
+    // check collosion with boarder
+    if (snakeBody[0].x + snakeWidth >= SCREEN_WIDTH - boarderWidth)
+        return true;
+    else if (snakeBody[0].x <= boarderWidth)
+        return true;
+    else if (snakeBody[0].y <= boarderHeight)
+        return true;
+    else if (snakeBody[0].y + snakeHeight >= SCREEN_HEIGHT - boarderHeight)
+        return true;
+    else if ((snakeBody[0].x + snakeWidth >= scoreTextRect.x) &&
+             snakeBody[0].y <= scoreTextRect.h)
+        return true;
+
+    // check collision with snake body
+    // for (int i = 1; i < snakeBody.size(); i++)
+    // {
+    //     bodyX = (snakeBody[i].x + snakeBody[i].w) / 2;
+    //     bodyY = (snakeBody[i].y + snakeBody[i].h) / 2;
+    //     distanceFromBody = sqrt(pow(headX - bodyX, 2) + pow(headY - bodyY, 2));
+    //     if (distanceFromBody <= snakeHeight)
+    //         return true;
+    // }
+
+    return false;
 }
