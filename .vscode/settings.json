@@ -2,6 +2,8 @@
   "files.associations": {
     "vector": "cpp",
     "stdexcept": "cpp",
-    "string": "cpp"
+    "string": "cpp",
+    "complex": "cpp",
+    "cmath": "cpp"
   }
 }
