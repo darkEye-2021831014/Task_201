@@ -216,8 +216,8 @@ int main(int argc, char **argv)
     gameIsRunning = initilize.initializeWindow();
     fontIsInitialized = initilize.initializeFont();
     initilize.initializeBackground();
-    initilize.initializeFruit();
     initilize.initializeSnake();
+    initilize.initializeFruit();
 
     while (gameIsRunning)
     {
@@ -349,6 +349,13 @@ void basicFunction ::initializeFruit(void)
     fruitControl.h = fruitHeight;
     fruitControl.x = boarderWidth + (rand() % (SCREEN_WIDTH - fruitWidth - boarderWidth - scoreTextRect.w));
     fruitControl.y = scoreTextRect.h + (rand() % (SCREEN_HEIGHT - fruitHeight - boarderHeight - scoreTextRect.h));
+    // avoid snake body
+    while (((snakeBody[0].x + snakeWidth) >= fruitControl.x && snakeBody[0].x <= (fruitControl.x + fruitWidth)) &&
+           ((snakeBody[0].y + snakeHeight) >= fruitControl.y && snakeBody[0].y <= (fruitControl.y + fruitHeight)))
+    {
+        fruitControl.x = boarderWidth + (rand() % (SCREEN_WIDTH - fruitWidth - boarderWidth - scoreTextRect.w));
+        fruitControl.y = scoreTextRect.h + (rand() % (SCREEN_HEIGHT - fruitHeight - boarderHeight - scoreTextRect.h));
+    }
 }
 
 void basicFunction ::initializeSnake(void)
@@ -405,10 +412,26 @@ void drawFunction ::drawFruit(void)
         ((snakeBody[0].y + snakeHeight) >= fruitControl.y && snakeBody[0].y <= (fruitControl.y + fruitHeight)))
     {
         snakeAteFruit = true;
-        // spawn new fruit. i.e., pick a random fruit
+        // spawn new fruit. i.e., pick a random fruit & also avoid snake body
         pickFruit = rand() % totalFruitTexture;
-        fruitControl.x = boarderWidth + (rand() % (SCREEN_WIDTH - fruitWidth - boarderWidth - scoreTextRect.w));
-        fruitControl.y = scoreTextRect.h + (rand() % (SCREEN_HEIGHT - fruitHeight - boarderHeight - scoreTextRect.h));
+        // avoid snake body
+        bool fruitInsideSnake = true;
+        while (fruitInsideSnake)
+        {
+            fruitControl.x = boarderWidth + (rand() % (SCREEN_WIDTH - fruitWidth - boarderWidth - scoreTextRect.w));
+            fruitControl.y = scoreTextRect.h + (rand() % (SCREEN_HEIGHT - fruitHeight - boarderHeight - scoreTextRect.h));
+            for (int i = 0; i < snakeBody.size(); i++)
+            {
+                if (((snakeBody[i].x + snakeWidth) >= fruitControl.x && snakeBody[i].x <= (fruitControl.x + fruitWidth)) &&
+                    ((snakeBody[i].y + snakeHeight) >= fruitControl.y && snakeBody[i].y <= (fruitControl.y + fruitHeight)))
+                {
+                    fruitInsideSnake = true;
+                    break;
+                }
+                else
+                    fruitInsideSnake = false;
+            }
+        }
     }
 
     SDL_RenderCopy(renderer, textureFruit[pickFruit], NULL, &fruitControl);
@@ -554,10 +577,6 @@ void Snake ::updateSnakeDirection(char key)
 
 bool Collision::detectCollision(void)
 {
-    // find the(x,y) of the center of snake head
-    int headX = (snakeBody[0].x + snakeBody[0].w) / 2,
-        headY = (snakeBody[0].y + snakeBody[0].h) / 2,
-        distanceFromBody = 0, bodyX = 0, bodyY = 0;
     // check collosion with boarder
     if (snakeBody[0].x + snakeWidth >= SCREEN_WIDTH - boarderWidth)
         return true;
@@ -572,14 +591,38 @@ bool Collision::detectCollision(void)
         return true;
 
     // check collision with snake body
-    // for (int i = 1; i < snakeBody.size(); i++)
-    // {
-    //     bodyX = (snakeBody[i].x + snakeBody[i].w) / 2;
-    //     bodyY = (snakeBody[i].y + snakeBody[i].h) / 2;
-    //     distanceFromBody = sqrt(pow(headX - bodyX, 2) + pow(headY - bodyY, 2));
-    //     if (distanceFromBody <= snakeHeight)
-    //         return true;
-    // }
+    // check if snake head collides with any of its body part
+    switch (snakeCurrentDirection)
+    {
+    case 'r':
+        for (int i = 1; i < snakeBody.size(); i++)
+        {
+            if (snakeBody[0].x + snakeWidth >= snakeBody[i].x && snakeBody[0].x + snakeWidth <= snakeBody[i].x + snakeWidth && snakeBody[0].y + snakeHeight >= snakeBody[i].y && snakeBody[0].y <= snakeBody[i].y + snakeHeight)
+                return true;
+        }
+        break;
+    case 'l':
+        for (int i = 1; i < snakeBody.size(); i++)
+        {
+            if (snakeBody[0].x <= snakeBody[i].x + snakeWidth && snakeBody[0].x >= snakeBody[i].x && snakeBody[0].y + snakeHeight >= snakeBody[i].y && snakeBody[0].y <= snakeBody[i].y + snakeHeight)
+                return true;
+        }
+        break;
+    case 'u':
+        for (int i = 1; i < snakeBody.size(); i++)
+        {
+            if (snakeBody[0].x + snakeWidth >= snakeBody[i].x && snakeBody[0].x <= snakeBody[i].x + snakeWidth && snakeBody[0].y <= snakeBody[i].y + snakeHeight && snakeBody[0].y >= snakeBody[i].y)
+                return true;
+        }
+        break;
+    case 'd':
+        for (int i = 1; i < snakeBody.size(); i++)
+        {
+            if (snakeBody[0].x + snakeWidth >= snakeBody[i].x && snakeBody[0].x <= snakeBody[i].x + snakeWidth && snakeBody[0].y + snakeHeight >= snakeBody[i].y && snakeBody[0].y + snakeHeight <= snakeBody[i].y + snakeHeight)
+                return true;
+        }
+        break;
+    }
 
     return false;
 }
