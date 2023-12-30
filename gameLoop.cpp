@@ -3,6 +3,7 @@
 #include <string>
 #include <stdio.h>
 #include <vector>
+#include <thread>
 using namespace std;
 
 #define SCREEN_WIDTH 1080
@@ -16,13 +17,15 @@ bool gameIsRunning = false,
      keyWasPressed = false,
      gameIsPaused = false,
      fontIsInitialized = false,
-     increaseOpacity = false;
+     increaseOpacity = false,
+     collisionSoundPlayed = false;
 
 // global variable for updating states of the game
 const int totalWaterTexture = 2,
           totalBoarderTexture = 1,
           totalMenuTexture = 1,
-          totalFruitTexture = 4,
+          totalFruitTexture = 5,
+          totalFruitEatingSound = 3,
           snakeColorRed = 100,
           snakeColorGreen = 255,
           snakeColorBlue = 100,
@@ -35,18 +38,21 @@ const int totalWaterTexture = 2,
           snakeHeight = 20,
           snakeVelocity = 8;
 int pickFruit = rand() % totalFruitTexture,
-    totalScore = 0;
+    totalScore = 0,
+    taskBackgroundFinished = 0;
 Uint8 textOpacity = 255;
 char snakeCurrentDirection = 'r', // by default snake is facing the right side
     pressedKey;
 
 vector<SDL_Rect> snakeBody;
+string soundEating[totalFruitEatingSound];
 SDL_Rect rect1, rect2, rect3, rect4, rect5, rect6, rect7, rect8,
     fruitControl, middleScreenTextRect, scoreTextRect;
 SDL_Texture *textureWater[totalWaterTexture],
     *textureBoarder[totalBoarderTexture],
     *textureMenu[totalMenuTexture],
-    *textureFruit[totalFruitTexture];
+    *textureFruit[totalFruitTexture],
+    *textureSnakeSkin;
 
 void processInput(void)
 {
@@ -130,6 +136,7 @@ public:
     void initializeBackground(void);
     void initializeFruit(void);
     void initializeSnake(void);
+    void backgroundActivities(void);
 };
 
 class drawFunction
@@ -157,6 +164,13 @@ class Collision
 {
 public:
     bool detectCollision(void);
+};
+
+class Sound
+{
+public:
+    void playWAVSound(const char *);
+    void eatFruit(void);
 };
 
 void Update(void)
@@ -213,11 +227,15 @@ void Update(void)
 int main(int argc, char **argv)
 {
     basicFunction initilize;
+    Sound sound;
     gameIsRunning = initilize.initializeWindow();
     fontIsInitialized = initilize.initializeFont();
     initilize.initializeBackground();
     initilize.initializeSnake();
     initilize.initializeFruit();
+
+    // run background activities in a diffrent thread
+    thread taskThread(&basicFunction::backgroundActivities, &initilize);
 
     while (gameIsRunning)
     {
@@ -225,13 +243,14 @@ int main(int argc, char **argv)
         Update();
     }
 
+    taskThread.join(); // wait for the thread to finish
     destroyWindow();
 }
 
 // implimentation of all prototype functions
 bool basicFunction ::initializeWindow(void)
 {
-    if (SDL_Init(SDL_INIT_VIDEO) < 0)
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0)
     {
         printf("Error: SDL Failed to initialize\n SDL Error: %s", SDL_GetError());
         return false;
@@ -336,6 +355,11 @@ void basicFunction ::initializeBackground(void)
     middleScreenTextRect.h = 100;
     middleScreenTextRect.x = (SCREEN_WIDTH - middleScreenTextRect.w) / 2;
     middleScreenTextRect.y = (SCREEN_HEIGHT - middleScreenTextRect.h) / 2;
+
+    // initialize fruit eating and background sounds
+    soundEating[0] = "Sounds/eatFruit.wav";
+    soundEating[1] = "Sounds/eatFruit2.wav";
+    soundEating[2] = "Sounds/eatFruit3.wav";
 }
 
 void basicFunction ::initializeFruit(void)
@@ -344,6 +368,7 @@ void basicFunction ::initializeFruit(void)
     textureFruit[1] = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP("./Fruits/grapes.bmp"));
     textureFruit[2] = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP("./Fruits/cherry.bmp"));
     textureFruit[3] = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP("./Fruits/banana.bmp"));
+    textureFruit[4] = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP("./Fruits/pear.bmp"));
 
     fruitControl.w = fruitWidth;
     fruitControl.h = fruitHeight;
@@ -366,7 +391,28 @@ void basicFunction ::initializeSnake(void)
     initialSnake.x = boarderWidth + 1;
     initialSnake.y = (SCREEN_HEIGHT - initialSnake.w) / 2;
 
+    textureSnakeSkin = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP("./Snake/skin.bmp"));
+
     snakeBody.push_back(initialSnake);
+}
+
+void basicFunction::backgroundActivities(void)
+{
+    // this function will run in a diffrent thread
+    Sound sound;
+    while (gameIsRunning && !collisionDetected)
+    {
+        if (gameIsStarted)
+        {
+            taskBackgroundFinished = 0;
+            thread taskBackground(&Sound::playWAVSound, &sound, "Sounds/backgroundTrack.wav");
+
+            thread taskEat(&Sound::eatFruit, &sound);
+            taskBackground.join();
+            taskBackgroundFinished = 1;
+            taskEat.join();
+        }
+    }
 }
 
 void drawFunction ::drawBackground(void)
@@ -460,14 +506,14 @@ void drawFunction ::drawMiddleScreenText(drawFunction &draw, const char *message
     else
         textOpacity -= 10;
     SDL_RenderCopy(renderer,
-                   draw.drawText("Fonts/novaMono.ttf", message, 24, {255, 255, 255, textOpacity}),
+                   draw.drawText("Fonts/robotoMonoRegular.ttf", message, 24, {255, 255, 255, textOpacity}),
                    NULL, &middleScreenTextRect);
 }
 
 void drawFunction ::drawScore(drawFunction &draw, const char *score)
 {
     SDL_RenderCopy(renderer,
-                   draw.drawText("Fonts/unispace.ttf", score, 18, {0, 0, 0, 255}),
+                   draw.drawText("Fonts/robotoMonoBold.ttf", score, 18, {0, 0, 0, 255}),
                    NULL, &scoreTextRect);
 }
 
@@ -512,9 +558,8 @@ void Snake ::updateSnakePosition(int snakeVelocity)
         }
     }
 
-    SDL_SetRenderDrawColor(renderer, snakeColorRed, snakeColorGreen, snakeColorBlue, snakeColorAlpha);
     for (int i = 0; i < snakeBody.size(); i++)
-        SDL_RenderFillRect(renderer, &snakeBody[i]);
+        SDL_RenderCopy(renderer, textureSnakeSkin, NULL, &snakeBody[i]);
 }
 
 void Snake::updateSnakeSize(void)
@@ -625,4 +670,56 @@ bool Collision::detectCollision(void)
     }
 
     return false;
+}
+
+void Sound::playWAVSound(const char *filePath)
+{
+
+    SDL_AudioSpec wavSpec;
+    Uint32 wavLength;
+    Uint8 *wavBuffer;
+
+    if (SDL_LoadWAV(filePath, &wavSpec, &wavBuffer, &wavLength) == nullptr)
+    {
+        printf("Could not load audio file.\nError: %s\n",
+               SDL_GetError());
+        return;
+    }
+
+    SDL_AudioDeviceID deviceId = SDL_OpenAudioDevice(nullptr, 0, &wavSpec, nullptr, 0);
+    if (deviceId == 0)
+    {
+        printf("Failed to open audio device.\nError: %s\n",
+               SDL_GetError());
+        SDL_FreeWAV(wavBuffer);
+        return;
+    }
+
+    SDL_QueueAudio(deviceId, wavBuffer, wavLength);
+
+    SDL_PauseAudioDevice(deviceId, 0);
+
+    while (SDL_GetQueuedAudioSize(deviceId) > 0 && gameIsRunning && !collisionSoundPlayed)
+    {
+        SDL_Delay(10); // Add a short delay to avoid busy-waiting
+    }
+
+    SDL_CloseAudioDevice(deviceId);
+    SDL_FreeWAV(wavBuffer);
+}
+
+void Sound::eatFruit(void)
+{
+    int pickSoundTrack = 0;
+    while (!taskBackgroundFinished)
+    {
+        pickSoundTrack = rand() % totalFruitEatingSound;
+        if (snakeAteFruit)
+            playWAVSound(soundEating[pickSoundTrack].c_str());
+        if (collisionDetected && !collisionSoundPlayed) // play collision sound only once
+        {
+            playWAVSound("SOunds/gameOver.wav");
+            collisionSoundPlayed = true;
+        }
+    }
 }
