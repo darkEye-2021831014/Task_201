@@ -4,6 +4,7 @@
     "stdexcept": "cpp",
     "string": "cpp",
     "complex": "cpp",
-    "cmath": "cpp"
+    "cmath": "cpp",
+    "thread": "cpp"
   }
 }
