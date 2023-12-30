@@ -187,7 +187,7 @@ void Update(void)
     // detect collision
     if (collision.detectCollision())
     {
-        string message = "    Game Over\n  Final Score: " + to_string(totalScore) + "\n Press Q To Exit";
+        string message = "     Game Over\n   Final Score: " + to_string(totalScore) + "\nPress Q To Exit Game";
         draw.drawMiddleScreenText(draw, message.c_str());
         gameIsStarted = false;
         collisionDetected = true;
