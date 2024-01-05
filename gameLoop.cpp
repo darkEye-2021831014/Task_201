@@ -26,6 +26,7 @@ const int totalWaterTexture = 2,
           totalMenuTexture = 1,
           totalFruitTexture = 5,
           totalFruitEatingSound = 3,
+          snakeInitialVelocity = 6,
           snakeColorRed = 100,
           snakeColorGreen = 255,
           snakeColorBlue = 100,
@@ -35,9 +36,9 @@ const int totalWaterTexture = 2,
           fruitWidth = 30,
           fruitHeight = 30,
           snakeWidth = 20,
-          snakeHeight = 20,
-          snakeVelocity = 8;
-int pickFruit = rand() % totalFruitTexture,
+          snakeHeight = 20;
+int snakeVelocity = snakeInitialVelocity,
+    pickFruit = rand() % totalFruitTexture,
     totalScore = 0,
     taskBackgroundFinished = 0;
 Uint8 textOpacity = 255;
@@ -97,6 +98,8 @@ void processInput(void)
                     else
                         gameIsPaused = true;
                 }
+                if (collisionDetected && collisionSoundPlayed)
+                    pressedKey = 'k'; // k and space both key will do the same thing
                 break;
             case SDLK_q:
                 gameIsRunning = false;
@@ -137,6 +140,7 @@ public:
     void initializeFruit(void);
     void initializeSnake(void);
     void backgroundActivities(void);
+    void resetGame(void);
 };
 
 class drawFunction
@@ -155,6 +159,7 @@ private:
 class Snake
 {
 public:
+    int incraseSpeedAfter = 8 + rand() % 8;
     void updateSnakePosition(int);
     void updateSnakeSize(void);
     void updateSnakeDirection(char);
@@ -173,13 +178,10 @@ public:
     void eatFruit(void);
 };
 
-void Update(void)
+void Update(Snake &snake, drawFunction &draw, Collision &collision)
 {
     SDL_RenderClear(renderer);
 
-    drawFunction draw;
-    Snake snake;
-    Collision collision;
     draw.drawBackground();
     draw.drawFruit();
     draw.drawScore(draw, to_string(totalScore).c_str()); // convert int to string then character array then pass to drawScore
@@ -187,7 +189,7 @@ void Update(void)
     // detect collision
     if (collision.detectCollision())
     {
-        string message = "     Game Over\n   Final Score: " + to_string(totalScore) + "\nPress Q To Exit Game";
+        string message = "       Game Over\n     Final Score: " + to_string(totalScore) + "\nPress Space To Play Again";
         draw.drawMiddleScreenText(draw, message.c_str());
         gameIsStarted = false;
         collisionDetected = true;
@@ -212,6 +214,10 @@ void Update(void)
             totalScore++;
             snake.updateSnakeSize();
             snakeAteFruit = false;
+
+            // increase snake speed up to 15;
+            if (!(totalScore % snake.incraseSpeedAfter) && snakeVelocity < 15)
+                snakeVelocity++;
         }
     }
     else if (!collisionDetected)
@@ -226,8 +232,13 @@ void Update(void)
 
 int main(int argc, char **argv)
 {
+    // make class objects
     basicFunction initilize;
     Sound sound;
+    Snake snake;
+    drawFunction draw;
+    Collision collision;
+
     gameIsRunning = initilize.initializeWindow();
     fontIsInitialized = initilize.initializeFont();
     initilize.initializeBackground();
@@ -240,7 +251,9 @@ int main(int argc, char **argv)
     while (gameIsRunning)
     {
         processInput();
-        Update();
+        if (collisionDetected && pressedKey == 'k')
+            initilize.resetGame();
+        Update(snake, draw, collision);
     }
 
     taskThread.join(); // wait for the thread to finish
@@ -351,7 +364,7 @@ void basicFunction ::initializeBackground(void)
     textureBoarder[0] = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP("./Background/boarder.bmp"));
 
     // intialize middle screen message rectangle
-    middleScreenTextRect.w = 500;
+    middleScreenTextRect.w = 600;
     middleScreenTextRect.h = 100;
     middleScreenTextRect.x = (SCREEN_WIDTH - middleScreenTextRect.w) / 2;
     middleScreenTextRect.y = (SCREEN_HEIGHT - middleScreenTextRect.h) / 2;
@@ -400,9 +413,9 @@ void basicFunction::backgroundActivities(void)
 {
     // this function will run in a diffrent thread
     Sound sound;
-    while (gameIsRunning && !collisionDetected)
+    while (gameIsRunning)
     {
-        if (gameIsStarted)
+        if (gameIsStarted && !collisionDetected)
         {
             taskBackgroundFinished = 0;
             thread taskBackground(&Sound::playWAVSound, &sound, "Sounds/backgroundTrack.wav");
@@ -413,6 +426,26 @@ void basicFunction::backgroundActivities(void)
             taskEat.join();
         }
     }
+}
+
+void basicFunction ::resetGame(void)
+{
+    gameIsStarted = true;
+    collisionDetected = false;
+    snakeAteFruit = false;
+    keyWasPressed = false;
+    gameIsPaused = false;
+    increaseOpacity = false;
+    collisionSoundPlayed = false;
+    totalScore = 0;
+    snakeVelocity = snakeInitialVelocity;
+    snakeBody.clear();
+    snakeCurrentDirection = 'r';
+    pressedKey = '/'; // default value;
+
+    // Reset necessary game states or variables here
+    initializeSnake();
+    initializeFruit();
 }
 
 void drawFunction ::drawBackground(void)
@@ -479,7 +512,6 @@ void drawFunction ::drawFruit(void)
             }
         }
     }
-
     SDL_RenderCopy(renderer, textureFruit[pickFruit], NULL, &fruitControl);
 }
 
