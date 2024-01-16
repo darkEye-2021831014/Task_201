@@ -18,15 +18,16 @@ bool gameIsRunning = false,
      gameIsPaused = false,
      fontIsInitialized = false,
      increaseOpacity = false,
-     collisionSoundPlayed = false;
+     collisionSoundPlayed = false,
+     bonusFruitTimerFlag = false;
 
 // global variable for updating states of the game
 const int totalWaterTexture = 2,
           totalBoarderTexture = 1,
           totalMenuTexture = 1,
-          totalFruitTexture = 5,
+          totalFruitTexture = 6,
           totalFruitEatingSound = 3,
-          snakeInitialVelocity = 6,
+          snakeInitialVelocity = 9,
           snakeColorRed = 100,
           snakeColorGreen = 255,
           snakeColorBlue = 100,
@@ -38,9 +39,10 @@ const int totalWaterTexture = 2,
           snakeWidth = 20,
           snakeHeight = 20;
 int snakeVelocity = snakeInitialVelocity,
-    pickFruit = rand() % totalFruitTexture,
+    pickFruit = rand() % (totalFruitTexture - 1),
     totalScore = 0,
     taskBackgroundFinished = 0;
+uint32_t startTime;
 Uint8 textOpacity = 255;
 char snakeCurrentDirection = 'r', // by default snake is facing the right side
     pressedKey;
@@ -48,7 +50,7 @@ char snakeCurrentDirection = 'r', // by default snake is facing the right side
 vector<SDL_Rect> snakeBody;
 string soundEating[totalFruitEatingSound];
 SDL_Rect rect1, rect2, rect3, rect4, rect5, rect6, rect7, rect8,
-    fruitControl, middleScreenTextRect, scoreTextRect;
+    fruitControl, bonusFruitControl, middleScreenTextRect, scoreTextRect;
 SDL_Texture *textureWater[totalWaterTexture],
     *textureBoarder[totalBoarderTexture],
     *textureMenu[totalMenuTexture],
@@ -148,6 +150,7 @@ class drawFunction
 public:
     void drawBackground(void);
     void drawFruit(void);
+    void drawBonusFruit(void);
     SDL_Texture *drawText(const char *, const char *, int, SDL_Color);
     void drawMiddleScreenText(drawFunction &, const char *);
     void drawScore(drawFunction &, const char *);
@@ -209,11 +212,28 @@ void Update(Snake &snake, drawFunction &draw, Collision &collision)
             snake.updateSnakePosition(snakeVelocity);
         }
 
+        if (bonusFruitTimerFlag)
+        {
+            draw.drawBonusFruit();
+            double elapsedTime = (SDL_GetTicks() - startTime) / 1000.0;
+            if (elapsedTime >= 4)
+            {
+                bonusFruitTimerFlag = false;
+            }
+        }
+
         if (snakeAteFruit)
         {
             totalScore++;
             snake.updateSnakeSize();
             snakeAteFruit = false;
+
+            // check for bonus fruit
+            if (!bonusFruitTimerFlag && totalScore % 7 == 0)
+            {
+                bonusFruitTimerFlag = true;
+                startTime = SDL_GetTicks();
+            }
 
             // increase snake speed up to 15;
             if (!(totalScore % snake.incraseSpeedAfter) && snakeVelocity < 15)
@@ -382,6 +402,7 @@ void basicFunction ::initializeFruit(void)
     textureFruit[2] = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP("./Fruits/cherry.bmp"));
     textureFruit[3] = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP("./Fruits/banana.bmp"));
     textureFruit[4] = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP("./Fruits/pear.bmp"));
+    textureFruit[5] = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP("./Fruits/bonusFruit.bmp"));
 
     fruitControl.w = fruitWidth;
     fruitControl.h = fruitHeight;
@@ -393,6 +414,19 @@ void basicFunction ::initializeFruit(void)
     {
         fruitControl.x = boarderWidth + (rand() % (SCREEN_WIDTH - fruitWidth - boarderWidth - scoreTextRect.w));
         fruitControl.y = scoreTextRect.h + (rand() % (SCREEN_HEIGHT - fruitHeight - boarderHeight - scoreTextRect.h));
+    }
+
+    // bonus fruit
+    bonusFruitControl.w = fruitWidth;
+    bonusFruitControl.h = fruitHeight;
+    bonusFruitControl.x = boarderWidth + (rand() % (SCREEN_WIDTH - fruitWidth - boarderWidth - scoreTextRect.w));
+    bonusFruitControl.y = scoreTextRect.h + (rand() % (SCREEN_HEIGHT - fruitHeight - boarderHeight - scoreTextRect.h));
+    // avoid snake body
+    while (((snakeBody[0].x + snakeWidth) >= bonusFruitControl.x && snakeBody[0].x <= (fruitControl.x + fruitWidth)) &&
+           ((snakeBody[0].y + snakeHeight) >= bonusFruitControl.y && snakeBody[0].y <= (bonusFruitControl.y + fruitHeight)))
+    {
+        bonusFruitControl.x = boarderWidth + (rand() % (SCREEN_WIDTH - fruitWidth - boarderWidth - scoreTextRect.w));
+        bonusFruitControl.y = scoreTextRect.h + (rand() % (SCREEN_HEIGHT - fruitHeight - boarderHeight - scoreTextRect.h));
     }
 }
 
@@ -437,6 +471,7 @@ void basicFunction ::resetGame(void)
     gameIsPaused = false;
     increaseOpacity = false;
     collisionSoundPlayed = false;
+    bonusFruitTimerFlag = false;
     totalScore = 0;
     snakeVelocity = snakeInitialVelocity;
     snakeBody.clear();
@@ -492,7 +527,7 @@ void drawFunction ::drawFruit(void)
     {
         snakeAteFruit = true;
         // spawn new fruit. i.e., pick a random fruit & also avoid snake body
-        pickFruit = rand() % totalFruitTexture;
+        pickFruit = rand() % (totalFruitTexture - 1);
         // avoid snake body
         bool fruitInsideSnake = true;
         while (fruitInsideSnake)
@@ -513,6 +548,59 @@ void drawFunction ::drawFruit(void)
         }
     }
     SDL_RenderCopy(renderer, textureFruit[pickFruit], NULL, &fruitControl);
+}
+
+int flag = 0;
+void drawFunction ::drawBonusFruit(void)
+{
+    int bonusFruitIndex = 5; // index of bonus fruit
+    if (!flag)
+    {
+        flag = 1;
+        // spawn bonus fruit and avoid snake body or the other fruit;
+        // avoid snake body
+        bool fruitInsideSnake = true;
+        while (fruitInsideSnake)
+        {
+            bonusFruitControl.x = boarderWidth + (rand() % (SCREEN_WIDTH - fruitWidth - boarderWidth - scoreTextRect.w));
+            bonusFruitControl.y = scoreTextRect.h + (rand() % (SCREEN_HEIGHT - fruitHeight - boarderHeight - scoreTextRect.h));
+            for (int i = 0; i < snakeBody.size(); i++)
+            {
+                if (((snakeBody[i].x + snakeWidth) >= bonusFruitControl.x && snakeBody[i].x <= (bonusFruitControl.x + fruitWidth)) &&
+                    ((snakeBody[i].y + snakeHeight) >= bonusFruitControl.y && snakeBody[i].y <= (bonusFruitControl.y + fruitHeight)))
+                {
+                    fruitInsideSnake = true;
+                    break;
+                }
+                else
+                    fruitInsideSnake = false;
+            }
+            // // check if the bonus fruit is inside the regular one
+            // if (bonusFruitControl.x >= fruitControl.x &&
+            //     bonusFruitControl.x <= (fruitControl.x + fruitWidth) &&
+            //     bonusFruitControl.y >= fruitControl.y &&
+            //     bonusFruitControl.y <= (fruitControl.y + fruitHeight) &&
+            //     (bonusFruitControl.y + fruitHeight) >= fruitControl.y &&
+            //     (bonusFruitControl.y + fruitHeight) <= (fruitControl.y + fruitHeight) &&
+            //     (bonusFruitControl.y + fruitHeight) >= fruitControl.x &&
+            //     (bonusFruitControl.y + fruitHeight) <= (fruitControl.x + fruitWidth))
+            // {
+            //     fruitInsideRegularFruit = true;
+            // }
+            // else
+            //     fruitInsideSnake = false;
+        }
+    }
+    SDL_RenderCopy(renderer, textureFruit[bonusFruitIndex], NULL, &bonusFruitControl);
+
+    // check whether the snake ate the bonus fruit
+    if (((snakeBody[0].x + snakeWidth) >= bonusFruitControl.x && snakeBody[0].x <= (bonusFruitControl.x + fruitWidth)) &&
+        ((snakeBody[0].y + snakeHeight) >= bonusFruitControl.y && snakeBody[0].y <= (bonusFruitControl.y + fruitHeight)))
+    {
+        flag = 0;
+        bonusFruitTimerFlag = false;
+        totalScore += 10;
+    }
 }
 
 SDL_Texture *drawFunction ::drawText(const char *fontFile, const char *message, int size, SDL_Color textColor)
