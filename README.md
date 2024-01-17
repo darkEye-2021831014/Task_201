@@ -1,12 +1,12 @@
 # Snake Game
 
-A Basic Snake Game, using sdl2 and c++
+A Basic Snake Game using only sdl2 and c++
 
 ## Table of Contents
 
 - [Project Title](#project-title)
 - [Description](#description)
-- [Features](#features)
+- [Game Control](#game-control)
 - [Requirements](#requirements)
 - [Note](#note)
 
@@ -19,10 +19,12 @@ This Is A Game Project For My University Course SWE-150
 
 sdl2, sdl2_ttf library and c++ 11 or higher and macOS(As i don't know how the game will act in any other operating system)
 
-## Features
+## Game Control
 
-You can use up, down, left and right key for changing snake direction(You can also use w,s,a,d for the same type of movement).
+You can use, up, down, left and right key for changing snake direction(You can also use w,s,a,d for the same type of movement).
+
 k or space will respectively pause and resume the game.
+
 q button can be used to quit the game.
 
 ## Note
