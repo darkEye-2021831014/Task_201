@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <ctime>
 #include <fstream>
+#include <iostream>
 using namespace std;
 
 #define SCREEN_WIDTH 1080
@@ -25,7 +26,10 @@ bool gameIsRunning = false,
      collisionSoundPlayed = false,
      bonusFruitTimerFlag = false,
      bonusFruitPositionFound = false,
-     pauseScreenSoundPlayed = false;
+     pauseScreenSoundPlayed = false,
+     newHighScore = false,
+     startTheGameNow = false,
+     newLuckyInterVal = false;
 
 // global variable for updating states of the game
 const int totalWaterTexture = 2,
@@ -51,8 +55,8 @@ int snakeVelocity = snakeInitialVelocity,
     totalScore = 0,
     taskBackgroundFinished = 0,
     vSyncActive,
-    prevResult = 0,
-    allTimeBestScore = 0;
+    prevResult = 0;
+
 uint32_t startTime;
 Uint8 textOpacity = 255;
 char snakeCurrentDirection = 'r', // by default snake is facing the right side
@@ -61,9 +65,10 @@ char snakeCurrentDirection = 'r', // by default snake is facing the right side
 vector<SDL_Rect> snakeBody;
 string soundEating[totalFruitEatingSound],
     soundCollision[totalCollisionSound],
-    soundBackground[totalBackgroundSound];
+    soundBackground[totalBackgroundSound],
+    userName = "";
 SDL_Rect rect1, rect2, rect3, rect4, rect5, rect6, rect7, rect8,
-    fruitControl, bonusFruitControl, middleScreenTextRect, scoreTextRect, screenTopTextRect;
+    fruitControl, bonusFruitControl, middleScreenTextRect, scoreTextRect, screenTopTextRect, screenBottomBoxRectangle, screenBottomLeftBox;
 SDL_Texture *textureWater[totalWaterTexture],
     *textureBoarder[totalBoarderTexture],
     *textureMenu[totalMenuTexture],
@@ -104,7 +109,7 @@ void processInput(void)
             case SDLK_SPACE:
             case SDLK_k:
                 keyWasPressed = false;
-                if (!gameIsStarted && !collisionDetected)
+                if (!gameIsStarted && !collisionDetected && startTheGameNow)
                     gameIsStarted = true;
                 else
                 {
@@ -150,6 +155,15 @@ void destroyWindow(void)
     SDL_Quit();
 }
 
+class Snake
+{
+public:
+    int incraseSpeedAfter;
+    void updateSnakePosition(int);
+    void updateSnakeSize(void);
+    void updateSnakeDirection(char);
+};
+
 class drawFunction
 {
 public:
@@ -159,19 +173,10 @@ public:
     SDL_Texture *drawText(const char *, const char *, int, SDL_Color);
     void drawMiddleScreenText(drawFunction &, const char *);
     void drawScore(drawFunction &, const char *);
-    void drawAllTimeBestScore(drawFunction &);
+    void drawAllTimeBestScore(drawFunction &, Snake &);
 
 private:
     SDL_Texture *texture;
-};
-
-class Snake
-{
-public:
-    int incraseSpeedAfter;
-    void updateSnakePosition(int);
-    void updateSnakeSize(void);
-    void updateSnakeDirection(char);
 };
 
 class basicFunction
@@ -184,6 +189,7 @@ public:
     void initializeSnake(Snake &);
     void backgroundActivities(void);
     void resetGame(Snake &);
+    void getUserName(void);
 };
 
 class Collision
@@ -199,7 +205,7 @@ public:
     void eatFruit(void);
 };
 
-void Update(Snake &snake, drawFunction &draw, Collision &collision)
+void Update(Snake &snake, drawFunction &draw, Collision &collision, basicFunction &initialize)
 {
     SDL_RenderClear(renderer);
 
@@ -210,7 +216,7 @@ void Update(Snake &snake, drawFunction &draw, Collision &collision)
     // detect collision
     if (collision.detectCollision())
     {
-        draw.drawAllTimeBestScore(draw);
+        draw.drawAllTimeBestScore(draw, snake);
         string message = "       Game Over\n     Final Score: " + to_string(totalScore) + "\nPress Space To Play Again";
         draw.drawMiddleScreenText(draw, message.c_str());
         gameIsStarted = false;
@@ -265,7 +271,17 @@ void Update(Snake &snake, drawFunction &draw, Collision &collision)
         }
     }
     else if (!collisionDetected)
-        draw.drawMiddleScreenText(draw, "Press Space To Start");
+    {
+        // do these operations before starting the game
+        while (userName.empty())
+            initialize.getUserName();
+
+        if (!userName.empty())
+        {
+            draw.drawMiddleScreenText(draw, "Press Space To Start");
+            startTheGameNow = true;
+        }
+    }
 
     if (gameIsPaused || !gameIsStarted || collisionDetected)
         snake.updateSnakePosition(0); // This Will Draw Current State Of The Snake
@@ -299,7 +315,7 @@ int main(int argc, char **argv)
         processInput();
         if (collisionDetected && pressedKey == 'k')
             initilize.resetGame(snake);
-        Update(snake, draw, collision);
+        Update(snake, draw, collision, initilize);
     }
 
     taskThread.join(); // wait for the thread to finish
@@ -420,10 +436,22 @@ void basicFunction ::initializeBackground(void)
     middleScreenTextRect.y = (SCREEN_HEIGHT - middleScreenTextRect.h) / 2;
 
     // initialize top Screen Text rectangle
-    screenTopTextRect.w = 700;
-    screenTopTextRect.h = 70;
+    screenTopTextRect.w = 800;
+    screenTopTextRect.h = 140;
     screenTopTextRect.x = (SCREEN_WIDTH - screenTopTextRect.w) / 2;
     screenTopTextRect.y = boarderHeight + 30;
+
+    // initialize bottom screen box rectangle
+    screenBottomBoxRectangle.w = 200;
+    screenBottomBoxRectangle.h = SCREEN_HEIGHT - boarderHeight - scoreTextRect.h;
+    screenBottomBoxRectangle.x = (SCREEN_WIDTH - screenBottomBoxRectangle.w) - boarderWidth;
+    screenBottomBoxRectangle.y = (SCREEN_HEIGHT - screenBottomBoxRectangle.h) - boarderHeight;
+
+    // inititalize bottom left screen text rectangle
+    screenBottomLeftBox.w = (middleScreenTextRect.x - boarderWidth);
+    screenBottomLeftBox.h = SCREEN_HEIGHT - 2 * boarderHeight - screenTopTextRect.h - 30;
+    screenBottomLeftBox.x = boarderWidth;
+    screenBottomLeftBox.y = screenTopTextRect.y + screenTopTextRect.h;
 
     // initialize fruit eating and background sounds
     soundEating[0] = "Sounds/eatFruit.wav";
@@ -530,6 +558,8 @@ void basicFunction ::resetGame(Snake &snake)
     collisionSoundPlayed = false;
     bonusFruitTimerFlag = false;
     pauseScreenSoundPlayed = false;
+    newHighScore = false;
+    newLuckyInterVal = false;
     totalScore = 0;
     prevResult = 0;
     snakeVelocity = snakeInitialVelocity;
@@ -540,6 +570,19 @@ void basicFunction ::resetGame(Snake &snake)
     // Reset necessary game states or variables here
     initializeSnake(snake);
     initializeFruit();
+}
+
+void basicFunction ::getUserName(void)
+{
+    string userInput = "";
+    cout << "Enter Your Name Here: ";
+    getline(cin, userInput);
+    for (int i = 0; i < userInput.size(); i++)
+    {
+        if (userInput[i] == ':')
+            break;
+        userName.push_back(userInput[i]);
+    }
 }
 
 void drawFunction ::drawBackground(void)
@@ -696,32 +739,134 @@ void drawFunction ::drawScore(drawFunction &draw, const char *score)
                    NULL, &scoreTextRect);
 }
 
-void drawFunction ::drawAllTimeBestScore(drawFunction &draw)
+void drawFunction ::drawAllTimeBestScore(drawFunction &draw, Snake &snake)
 {
     // calculate all time best
-    string bestScoreFromFile;
+    // there are five all time best scores are saved
+    string highestVelocityFromFile;
+    int totalSavedScores = 15;
+    vector<pair<int, string>> allTimeBestScores;
     ifstream in;
-    in.open("saveHighestScore.txt");
-    getline(in, bestScoreFromFile);
+    in.open("./Files/saveHighestScore.txt");
+    string getLineFromFile;
+    for (int i = 0; i < totalSavedScores; i++)
+    {
+        getline(in, getLineFromFile);
+        string getScoreFromLine = "",
+               getNameFromLine = "";
+        bool startTakingScore = false;
+        for (int i = 0; i < getLineFromFile.size(); i++)
+        {
+            if (startTakingScore)
+                getScoreFromLine.push_back(getLineFromFile[i]);
+            else
+            {
+                if (getLineFromFile[i] == ':')
+                    startTakingScore = true;
+                getNameFromLine.push_back(getLineFromFile[i]);
+            }
+        }
+
+        allTimeBestScores.push_back({stoi(getScoreFromLine), getNameFromLine});
+    }
+    sort(allTimeBestScores.begin(), allTimeBestScores.end());
     in.close();
-    allTimeBestScore = stoi(bestScoreFromFile);
-    if (totalScore >= allTimeBestScore)
+
+    // work with velocity file
+    ifstream inVelocity;
+    inVelocity.open("./Files/saveHighestVelocity.txt");
+    getline(inVelocity, highestVelocityFromFile);
+    inVelocity.close();
+
+    int allTimeHighestVelocity = stoi(highestVelocityFromFile);
+    if (snakeVelocity >= allTimeHighestVelocity)
+        allTimeHighestVelocity = snakeVelocity;
+    string highestVelocity = "All Time Best Velocity: " +
+                             to_string(allTimeHighestVelocity);
+
+    SDL_Color newScore = {255, 10, 10, SDL_ALPHA_OPAQUE},
+              prevScore = {0, 255, 0, SDL_ALPHA_OPAQUE};
+    if (totalScore > allTimeBestScores[0].first && !newHighScore)
     {
-        allTimeBestScore = totalScore;
-        ofstream out;
-        out.open("saveHighestScore.txt");
-        out << allTimeBestScore;
-        out.close();
-        SDL_RenderCopy(renderer,
-                       draw.drawText("Fonts/robotoMonoRegular.ttf", ("New All Time Best Score: " + to_string(allTimeBestScore)).c_str(), 20, {255, 10, 10, SDL_ALPHA_OPAQUE}), NULL, &screenTopTextRect);
+        newHighScore = true;
+        allTimeBestScores[0].first = totalScore;
+        allTimeBestScores[0].second = userName + ':';
+        sort(allTimeBestScores.begin(), allTimeBestScores.end());
     }
-    else
+
+    // work with luckiest interval file here
+    int totalSavedIntervals = 10;
+    vector<pair<int, string>> allTimeBestIntervals;
+    ifstream inInterval;
+    inInterval.open("./Files/luckiestInterval.txt");
+    for (int i = 0; i < totalSavedIntervals; i++)
     {
-        SDL_RenderCopy(renderer,
-                       draw.drawText("Fonts/robotoMonoRegular.ttf", ("All Time Best Score: " + to_string(allTimeBestScore)).c_str(), 24, {0, 255, 0, SDL_ALPHA_OPAQUE}),
-                       NULL, &screenTopTextRect);
+        getline(inInterval, getLineFromFile);
+        string getIntervalFromLine = "",
+               getNameFromLine = "";
+        bool startTakingInterval = false;
+        for (int i = 0; i < getLineFromFile.size(); i++)
+        {
+            if (startTakingInterval)
+                getIntervalFromLine.push_back(getLineFromFile[i]);
+            else
+            {
+                if (getLineFromFile[i] == ':')
+                    startTakingInterval = true;
+                getNameFromLine.push_back(getLineFromFile[i]);
+            }
+        }
+
+        allTimeBestIntervals.push_back({stoi(getIntervalFromLine), getNameFromLine});
     }
+    sort(allTimeBestIntervals.begin(), allTimeBestIntervals.end());
+    inInterval.close();
+
+    if (snake.incraseSpeedAfter > allTimeBestIntervals[0].first && !newLuckyInterVal)
+    {
+        newLuckyInterVal = true;
+        allTimeBestIntervals[0].first = snake.incraseSpeedAfter;
+        allTimeBestIntervals[0].second = userName + ':';
+        sort(allTimeBestIntervals.begin(), allTimeBestIntervals.end());
+    }
+
+    // start rendering text from here
+    string highestScore = "All Time Best Score: " + to_string(allTimeBestScores[totalSavedScores - 1].first);
+    SDL_RenderCopy(renderer,
+                   draw.drawText("Fonts/robotoMonoRegular.ttf", (highestScore + "\n" + highestVelocity).c_str(), 20, (newHighScore) ? newScore : prevScore),
+                   NULL, &screenTopTextRect);
+
+    // write to the velocity file
+    ofstream outVelocity;
+    outVelocity.open("./Files/saveHighestVelocity.txt");
+    outVelocity << allTimeHighestVelocity;
+    outVelocity.close();
+
+    // write to the score file
+    ofstream out;
+    out.open("./Files/saveHighestScore.txt");
+    for (int i = totalSavedScores - 1; i >= 0; i--)
+        out << allTimeBestScores[i].second << allTimeBestScores[i].first << endl;
+    out.close();
+
+    // show some best scores
+    SDL_RenderCopy(renderer,
+                   draw.drawText("Fonts/robotoMonoRegular.ttf", ("All Time Best Scores\n\n" + allTimeBestScores[totalSavedScores - 1].second + ' ' + to_string(allTimeBestScores[totalSavedScores - 1].first) + "\n" + allTimeBestScores[totalSavedScores - 2].second + ' ' + to_string(allTimeBestScores[totalSavedScores - 2].first) + "\n" + allTimeBestScores[totalSavedScores - 3].second + ' ' + to_string(allTimeBestScores[totalSavedScores - 3].first) + "\n" + allTimeBestScores[totalSavedScores - 4].second + ' ' + to_string(allTimeBestScores[totalSavedScores - 4].first) + "\n" + allTimeBestScores[totalSavedScores - 5].second + ' ' + to_string(allTimeBestScores[totalSavedScores - 5].first) + "\n" + allTimeBestScores[totalSavedScores - 6].second + ' ' + to_string(allTimeBestScores[totalSavedScores - 6].first) + "\n" + allTimeBestScores[totalSavedScores - 7].second + ' ' + to_string(allTimeBestScores[totalSavedScores - 7].first) + "\n" + allTimeBestScores[totalSavedScores - 8].second + ' ' + to_string(allTimeBestScores[totalSavedScores - 8].first) + "\n" + allTimeBestScores[totalSavedScores - 9].second + ' ' + to_string(allTimeBestScores[totalSavedScores - 9].first) + "\n" + allTimeBestScores[totalSavedScores - 10].second + ' ' + to_string(allTimeBestScores[totalSavedScores - 10].first) + "\n" + allTimeBestScores[totalSavedScores - 11].second + ' ' + to_string(allTimeBestScores[totalSavedScores - 11].first) + "\n" + allTimeBestScores[totalSavedScores - 12].second + ' ' + to_string(allTimeBestScores[totalSavedScores - 12].first) + "\n" + allTimeBestScores[totalSavedScores - 13].second + ' ' + to_string(allTimeBestScores[totalSavedScores - 13].first) + "\n" + allTimeBestScores[totalSavedScores - 14].second + ' ' + to_string(allTimeBestScores[totalSavedScores - 14].first) + "\n" + allTimeBestScores[totalSavedScores - 15].second + ' ' + to_string(allTimeBestScores[totalSavedScores - 15].first)).c_str(), 26, {255, 0, 255, SDL_ALPHA_OPAQUE}),
+                   NULL, &screenBottomBoxRectangle);
+
+    // write to the luckiest file
+    ofstream outInterval;
+    outInterval.open("./Files/luckiestInterval.txt");
+    for (int i = totalSavedIntervals - 1; i >= 0; i--)
+        outInterval << allTimeBestIntervals[i].second << allTimeBestIntervals[i].first << endl;
+    outInterval.close();
+
+    // show some best intervals
+    SDL_RenderCopy(renderer,
+                   draw.drawText("Fonts/robotoMonoRegular.ttf", ("\tAll Time Best\n\tIntervals\n\n\t" + allTimeBestIntervals[totalSavedIntervals - 1].second + ' ' + to_string(allTimeBestIntervals[totalSavedIntervals - 1].first) + "\n\t" + allTimeBestIntervals[totalSavedIntervals - 2].second + ' ' + to_string(allTimeBestIntervals[totalSavedIntervals - 2].first) + "\n\t" + allTimeBestIntervals[totalSavedIntervals - 3].second + ' ' + to_string(allTimeBestIntervals[totalSavedIntervals - 3].first) + "\n\t" + allTimeBestIntervals[totalSavedIntervals - 4].second + ' ' + to_string(allTimeBestIntervals[totalSavedIntervals - 4].first) + "\n\t" + allTimeBestIntervals[totalSavedIntervals - 5].second + ' ' + to_string(allTimeBestIntervals[totalSavedIntervals - 5].first) + "\n\t" + allTimeBestIntervals[totalSavedIntervals - 6].second + ' ' + to_string(allTimeBestIntervals[totalSavedIntervals - 6].first) + "\n\t" + allTimeBestIntervals[totalSavedIntervals - 7].second + ' ' + to_string(allTimeBestIntervals[totalSavedIntervals - 7].first) + "\n\t" + allTimeBestIntervals[totalSavedIntervals - 8].second + ' ' + to_string(allTimeBestIntervals[totalSavedIntervals - 8].first) + "\n\t" + allTimeBestIntervals[totalSavedIntervals - 9].second + ' ' + to_string(allTimeBestIntervals[totalSavedIntervals - 9].first) + "\n\t" + allTimeBestIntervals[totalSavedIntervals - 10].second + ' ' + to_string(allTimeBestIntervals[totalSavedIntervals - 10].first)).c_str(), 26, {255, 0, 255, SDL_ALPHA_OPAQUE}),
+                   NULL, &screenBottomLeftBox);
 }
+
 void Snake ::updateSnakePosition(int snakeVelocity)
 {
     if (snakeVelocity)
