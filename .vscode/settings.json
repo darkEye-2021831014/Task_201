@@ -5,6 +5,8 @@
     "string": "cpp",
     "complex": "cpp",
     "cmath": "cpp",
-    "thread": "cpp"
+    "thread": "cpp",
+    "fstream": "cpp",
+    "iosfwd": "cpp"
   }
 }
