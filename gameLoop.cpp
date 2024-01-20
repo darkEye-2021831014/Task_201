@@ -1,5 +1,6 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_ttf.h>
+#include <SDL2/SDL_mixer.h>
 #include <string>
 #include <stdio.h>
 #include <vector>
@@ -63,11 +64,8 @@ char snakeCurrentDirection = 'r', // by default snake is facing the right side
     pressedKey;
 
 vector<SDL_Rect> snakeBody;
-string soundEating[totalFruitEatingSound],
-    soundCollision[totalCollisionSound],
-    soundBackground[totalBackgroundSound],
-    userName = "";
-SDL_Rect rect1, rect2, rect3, rect4, rect5, rect6, rect7, rect8,
+string userName = "";
+SDL_Rect rect1, rect2, rect3, rect4, boarderTopRect, boarderBottomRect, boarderLeftRect, boarderRightRect,
     fruitControl, bonusFruitControl, middleScreenTextRect, scoreTextRect, screenTopTextRect, screenBottomBoxRectangle, screenBottomLeftBox;
 SDL_Texture *textureWater[totalWaterTexture],
     *textureBoarder[totalBoarderTexture],
@@ -114,10 +112,7 @@ void processInput(void)
                 else
                 {
                     if (gameIsPaused)
-                    {
                         gameIsPaused = false;
-                        pauseScreenSoundPlayed = false;
-                    }
                     else
                         gameIsPaused = true;
                 }
@@ -138,8 +133,134 @@ void processInput(void)
     }
 }
 
-void destroyWindow(void)
+class Snake
 {
+public:
+    int incraseSpeedAfter;
+    // intialize snake using constructor
+    Snake(string);
+    void updateSnakePosition(int);
+    void updateSnakeSize(void);
+    void updateSnakeDirection(char);
+
+private:
+    SDL_Rect initialSnake;
+};
+
+class Fruit
+{
+public:
+    // initialize the fruit using constructor
+    Fruit();
+};
+
+class Font
+{
+public:
+    Font()
+    {
+        if (TTF_Init() == -1)
+        {
+            printf("TTF failed to initialize\nError: %s\n",
+                   TTF_GetError());
+        }
+    }
+};
+
+class Music
+{
+public:
+    Music(string filePath, bool isMusic)
+    {
+        if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 1024) == -1)
+            cout << "Audio Library Is Not Working\nError: " << Mix_GetError() << endl;
+
+        if (isMusic)
+            music = Mix_LoadMUS(filePath.c_str());
+        else
+            chunk = Mix_LoadWAV(filePath.c_str());
+    }
+
+    void playMusic(int loops)
+    {
+        // loops = 0 for 0
+        //-1 for foreever loop
+        if (music != nullptr)
+            Mix_PlayMusic(music, loops);
+    }
+
+    int playChuck(int channel, int loops)
+    {
+        if (chunk != nullptr)
+            return Mix_PlayChannel(channel, chunk, loops);
+        return -1;
+    }
+
+    void pauseMusic()
+    {
+        Mix_PauseMusic();
+    }
+
+    void stopMusic()
+    {
+        Mix_HaltMusic();
+        Mix_HaltChannel(-1); //-1 means halt all channels
+    }
+
+private:
+    Mix_Music *music;
+    Mix_Chunk *chunk;
+};
+
+class Background
+{
+public:
+    Background() : pauseSound("./Sounds/pauseGame.wav", false),
+                   resumeSound("./Sounds/resumeGame.wav", false),
+                   bonusFruitSound("./Sounds/eatBonusFruit.wav", false)
+    {
+        gameIsRunning = initializeWindow();
+        initializeBackground();
+    }
+    bool initializeWindow();
+    void initializeBackground();
+    void resetGame();
+    void backgroundActivities();
+    void getUserName();
+
+private:
+    vector<Music> backgroundMusic, fruitEatingSound, collisionSound;
+    Music pauseSound, resumeSound, bonusFruitSound;
+};
+
+class drawFunction
+{
+public:
+    void drawBackground(void);
+    void drawFruit(void);
+    void drawBonusFruit(void);
+    SDL_Texture *drawText(const char *, const char *, int, SDL_Color);
+    void drawMiddleScreenText(drawFunction &, const char *);
+    void drawScore(drawFunction &, const char *);
+    void drawAllTimeBestScore(drawFunction &, Snake *);
+
+private:
+    SDL_Texture *texture;
+};
+
+class Collision
+{
+public:
+    bool detectCollision(void);
+};
+
+void destroyBackground(Fruit *fruit, Snake *snake, Font *font, Background *background)
+{
+    delete fruit;
+    delete snake;
+    delete font;
+    delete background;
+
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     for (int i = 0; i < totalWaterTexture; i++)
@@ -155,57 +276,7 @@ void destroyWindow(void)
     SDL_Quit();
 }
 
-class Snake
-{
-public:
-    int incraseSpeedAfter;
-    void updateSnakePosition(int);
-    void updateSnakeSize(void);
-    void updateSnakeDirection(char);
-};
-
-class drawFunction
-{
-public:
-    void drawBackground(void);
-    void drawFruit(void);
-    void drawBonusFruit(void);
-    SDL_Texture *drawText(const char *, const char *, int, SDL_Color);
-    void drawMiddleScreenText(drawFunction &, const char *);
-    void drawScore(drawFunction &, const char *);
-    void drawAllTimeBestScore(drawFunction &, Snake &);
-
-private:
-    SDL_Texture *texture;
-};
-
-class basicFunction
-{
-public:
-    bool initializeWindow(void);
-    bool initializeFont(void);
-    void initializeBackground(void);
-    void initializeFruit(void);
-    void initializeSnake(Snake &);
-    void backgroundActivities(void);
-    void resetGame(Snake &);
-    void getUserName(void);
-};
-
-class Collision
-{
-public:
-    bool detectCollision(void);
-};
-
-class Sound
-{
-public:
-    void playWAVSound(const char *);
-    void eatFruit(void);
-};
-
-void Update(Snake &snake, drawFunction &draw, Collision &collision, basicFunction &initialize)
+void Update(Snake *snake, drawFunction &draw, Collision &collision, Background *background)
 {
     SDL_RenderClear(renderer);
 
@@ -231,10 +302,10 @@ void Update(Snake &snake, drawFunction &draw, Collision &collision, basicFunctio
         {
             if (keyWasPressed)
             {
-                snake.updateSnakeDirection(pressedKey);
+                snake->updateSnakeDirection(pressedKey);
                 keyWasPressed = false;
             }
-            snake.updateSnakePosition(snakeVelocity);
+            snake->updateSnakePosition(snakeVelocity);
         }
 
         if (bonusFruitTimerFlag)
@@ -251,7 +322,7 @@ void Update(Snake &snake, drawFunction &draw, Collision &collision, basicFunctio
         if (snakeAteFruit)
         {
             totalScore++;
-            snake.updateSnakeSize();
+            snake->updateSnakeSize();
             snakeAteFruit = false;
 
             // check for bonus fruit
@@ -263,18 +334,18 @@ void Update(Snake &snake, drawFunction &draw, Collision &collision, basicFunctio
         }
 
         // increase snake speed up to 15;
-        if ((totalScore / snake.incraseSpeedAfter) > prevResult && snakeVelocity < 15)
+        if ((totalScore / snake->incraseSpeedAfter) > prevResult && snakeVelocity < 15)
         {
             snakeVelocity++;
             SDL_Log("New Snake Speed: %d->%d", snakeVelocity - 1, snakeVelocity);
-            prevResult = (totalScore / snake.incraseSpeedAfter);
+            prevResult = (totalScore / snake->incraseSpeedAfter);
         }
     }
     else if (!collisionDetected)
     {
         // do these operations before starting the game
         while (userName.empty())
-            initialize.getUserName();
+            background->getUserName();
 
         if (!userName.empty())
         {
@@ -284,7 +355,7 @@ void Update(Snake &snake, drawFunction &draw, Collision &collision, basicFunctio
     }
 
     if (gameIsPaused || !gameIsStarted || collisionDetected)
-        snake.updateSnakePosition(0); // This Will Draw Current State Of The Snake
+        snake->updateSnakePosition(0); // This Will Draw Current State Of The Snake
 
     // vSync failed to activate so a 20 ms delay is the adjustment
     if (vSyncActive != 0)
@@ -295,35 +366,38 @@ void Update(Snake &snake, drawFunction &draw, Collision &collision, basicFunctio
 int main(int argc, char **argv)
 {
     // make class objects
-    basicFunction initilize;
-    Sound sound;
-    Snake snake;
     drawFunction draw;
     Collision collision;
 
-    gameIsRunning = initilize.initializeWindow();
-    fontIsInitialized = initilize.initializeFont();
-    initilize.initializeBackground();
-    initilize.initializeSnake(snake);
-    initilize.initializeFruit();
+    Background *background = new Background();
+    Font *font = new Font();
+    Snake *snake = new Snake("./Snake/skin.bmp");
+    Fruit *fruit = new Fruit();
 
     // run background activities in a diffrent thread
-    thread taskThread(&basicFunction::backgroundActivities, &initilize);
+    thread taskThread(&Background::backgroundActivities, background);
 
     while (gameIsRunning)
     {
         processInput();
+        // reset the game
         if (collisionDetected && pressedKey == 'k')
-            initilize.resetGame(snake);
-        Update(snake, draw, collision, initilize);
+        {
+            delete snake;
+            delete fruit;
+            background->resetGame();
+            snake = new Snake("./Snake/skin.bmp");
+            fruit = new Fruit();
+        }
+        Update(snake, draw, collision, background);
     }
 
     taskThread.join(); // wait for the thread to finish
-    destroyWindow();
+    destroyBackground(fruit, snake, font, background);
 }
 
 // implimentation of all prototype functions
-bool basicFunction ::initializeWindow(void)
+bool Background ::initializeWindow(void)
 {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0)
     {
@@ -360,18 +434,7 @@ bool basicFunction ::initializeWindow(void)
     return true;
 }
 
-bool basicFunction ::initializeFont(void)
-{
-    if (TTF_Init() == -1)
-    {
-        printf("TTF failed to initialize\nError: %s\n",
-               TTF_GetError());
-        return false;
-    }
-    return true;
-}
-
-void basicFunction ::initializeBackground(void)
+void Background ::initializeBackground(void)
 {
     // initialize score showing rectangle
     scoreTextRect.w = 60;
@@ -407,25 +470,25 @@ void basicFunction ::initializeBackground(void)
     SDL_FreeSurface(surface);
 
     // initialize boarder
-    rect5.x = 0;
-    rect5.y = 0;
-    rect5.w = SCREEN_WIDTH - scoreTextRect.w;
-    rect5.h = boarderHeight;
+    boarderTopRect.x = 0;
+    boarderTopRect.y = 0;
+    boarderTopRect.w = SCREEN_WIDTH - scoreTextRect.w;
+    boarderTopRect.h = boarderHeight;
 
-    rect6.w = SCREEN_WIDTH;
-    rect6.h = boarderHeight;
-    rect6.x = 0;
-    rect6.y = SCREEN_HEIGHT - rect6.h;
+    boarderBottomRect.w = SCREEN_WIDTH;
+    boarderBottomRect.h = boarderHeight;
+    boarderBottomRect.x = 0;
+    boarderBottomRect.y = SCREEN_HEIGHT - boarderBottomRect.h;
 
-    rect7.x = 0;
-    rect7.y = boarderHeight;
-    rect7.w = boarderWidth;
-    rect7.h = SCREEN_HEIGHT - (2 * rect7.y);
+    boarderLeftRect.x = 0;
+    boarderLeftRect.y = boarderHeight;
+    boarderLeftRect.w = boarderWidth;
+    boarderLeftRect.h = SCREEN_HEIGHT - (2 * boarderLeftRect.y);
 
-    rect8.w = boarderWidth;
-    rect8.x = SCREEN_WIDTH - rect8.w;
-    rect8.y = scoreTextRect.h;
-    rect8.h = SCREEN_HEIGHT - rect8.y - boarderHeight;
+    boarderRightRect.w = boarderWidth;
+    boarderRightRect.x = SCREEN_WIDTH - boarderRightRect.w;
+    boarderRightRect.y = scoreTextRect.h;
+    boarderRightRect.h = SCREEN_HEIGHT - boarderRightRect.y - boarderHeight;
 
     textureBoarder[0] = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP("./Background/boarder.bmp"));
 
@@ -454,100 +517,64 @@ void basicFunction ::initializeBackground(void)
     screenBottomLeftBox.y = screenTopTextRect.y + screenTopTextRect.h;
 
     // initialize fruit eating and background sounds
-    soundEating[0] = "Sounds/eatFruit.wav";
-    soundEating[1] = "Sounds/eatFruit2.wav";
-    soundEating[2] = "Sounds/eatFruit3.wav";
-
-    // initialize collision sounds
-    soundCollision[0] = "./Sounds/gameOver.wav";
-    soundCollision[1] = "./Sounds/gameOver2.wav";
-    soundCollision[2] = "./Sounds/gameOver3.wav";
-
-    // initialize background sounds;
-    soundBackground[0] = "./Sounds/backgroundTrack.wav";
-    soundBackground[1] = "./Sounds/backgroundTrack2.wav";
-    soundBackground[2] = "./Sounds/backgroundTrack4.wav";
-    // soundBackground[3] = "./Sounds/backgroundTrack3.wav";
+    for (int i = 0; i < totalBackgroundSound; i++)
+        backgroundMusic.emplace_back("./Sounds/backgroundTrack" + to_string(i + 1) + ".mp3", true);
+    for (int i = 0; i < totalFruitEatingSound; i++)
+        fruitEatingSound.emplace_back("./Sounds/eatFruit" + to_string(i + 1) + ".wav", false);
+    for (int i = 0; i < totalCollisionSound; i++)
+        collisionSound.emplace_back("./Sounds/gameOver" + to_string(i + 1) + ".wav", false);
 }
 
-void basicFunction ::initializeFruit(void)
-{
-    textureFruit[0] = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP("./Fruits/apple.bmp"));
-    textureFruit[1] = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP("./Fruits/grapes.bmp"));
-    textureFruit[2] = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP("./Fruits/cherry.bmp"));
-    textureFruit[3] = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP("./Fruits/banana.bmp"));
-    textureFruit[4] = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP("./Fruits/pear.bmp"));
-    textureFruit[5] = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP("./Fruits/bonusFruit.bmp"));
-
-    fruitControl.w = fruitWidth;
-    fruitControl.h = fruitHeight;
-    fruitControl.x = boarderWidth + (rand() % (SCREEN_WIDTH - fruitWidth - boarderWidth - scoreTextRect.w));
-    fruitControl.y = scoreTextRect.h + (rand() % (SCREEN_HEIGHT - fruitHeight - boarderHeight - scoreTextRect.h));
-    // avoid snake body
-    while (((snakeBody[0].x + snakeWidth) >= fruitControl.x && snakeBody[0].x <= (fruitControl.x + fruitWidth)) &&
-           ((snakeBody[0].y + snakeHeight) >= fruitControl.y && snakeBody[0].y <= (fruitControl.y + fruitHeight)))
-    {
-        fruitControl.x = boarderWidth + (rand() % (SCREEN_WIDTH - fruitWidth - boarderWidth - scoreTextRect.w));
-        fruitControl.y = scoreTextRect.h + (rand() % (SCREEN_HEIGHT - fruitHeight - boarderHeight - scoreTextRect.h));
-    }
-
-    // bonus fruit
-    bonusFruitControl.w = fruitWidth;
-    bonusFruitControl.h = fruitHeight;
-    bonusFruitControl.x = boarderWidth + (rand() % (SCREEN_WIDTH - fruitWidth - boarderWidth - scoreTextRect.w));
-    bonusFruitControl.y = scoreTextRect.h + (rand() % (SCREEN_HEIGHT - fruitHeight - boarderHeight - scoreTextRect.h));
-    // avoid snake body
-    while (((snakeBody[0].x + snakeWidth) >= bonusFruitControl.x && snakeBody[0].x <= (fruitControl.x + fruitWidth)) &&
-           ((snakeBody[0].y + snakeHeight) >= bonusFruitControl.y && snakeBody[0].y <= (bonusFruitControl.y + fruitHeight)))
-    {
-        bonusFruitControl.x = boarderWidth + (rand() % (SCREEN_WIDTH - fruitWidth - boarderWidth - scoreTextRect.w));
-        bonusFruitControl.y = scoreTextRect.h + (rand() % (SCREEN_HEIGHT - fruitHeight - boarderHeight - scoreTextRect.h));
-    }
-
-    // pick A random fruit;
-    pickFruit = rand() % (totalFruitTexture - 1);
-}
-
-void basicFunction ::initializeSnake(Snake &snake)
-{
-    SDL_Rect initialSnake;
-    initialSnake.w = snakeWidth;
-    initialSnake.h = snakeHeight;
-    initialSnake.x = boarderWidth + 1;
-    initialSnake.y = (SCREEN_HEIGHT - initialSnake.w) / 2;
-
-    textureSnakeSkin = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP("./Snake/skin.bmp"));
-
-    snakeBody.push_back(initialSnake);
-
-    // speed increase after a certain score
-    // use the current system time ass seed to generate pseudo-random values;
-    srand((unsigned)time(0));
-    snake.incraseSpeedAfter = 10 + rand() % 11;
-    SDL_Log("Increase Snake Speed After: %d", snake.incraseSpeedAfter);
-}
-
-void basicFunction::backgroundActivities(void)
+void Background::backgroundActivities(void)
 {
     // this function will run in a diffrent thread
-    Sound sound;
+
     while (gameIsRunning)
     {
         if (gameIsStarted && !collisionDetected)
         {
-            taskBackgroundFinished = 0;
-            thread taskBackground(&Sound::playWAVSound, &sound,
-                                  soundBackground[rand() % totalBackgroundSound].c_str());
+            if (!Mix_PlayingMusic())
+                backgroundMusic[rand() % totalBackgroundSound].playMusic(0);
+            if (gameIsPaused && !pauseScreenSoundPlayed)
+            {
+                //-1 to play the chunk on the first free channel
+                pauseSound.playChuck(0, 0);
+                pauseScreenSoundPlayed = true;
+            }
+            if (!gameIsPaused && pauseScreenSoundPlayed)
+            {
+                resumeSound.playChuck(0, 0);
+                pauseScreenSoundPlayed = false;
+            }
 
-            thread taskEat(&Sound::eatFruit, &sound);
-            taskBackground.join();
-            taskBackgroundFinished = 1;
-            taskEat.join();
+            if (snakeAteBonusFruit)
+            {
+                bonusFruitSound.playChuck(0, 0);
+                snakeAteBonusFruit = false;
+            }
+            if (snakeAteFruit)
+                fruitEatingSound[rand() % totalFruitEatingSound].playChuck(0, 0);
+        }
+        else
+        {
+            if (collisionDetected && !collisionSoundPlayed) // play collision sound only once
+            {
+                int channel = collisionSound[rand() % totalCollisionSound].playChuck(-1, 0);
+
+                while (Mix_Playing(channel) == 1)
+                {
+                    if (!gameIsRunning)
+                        break;
+                    continue;
+                }
+                collisionSoundPlayed = true;
+            }
+            pauseSound.stopMusic();
         }
     }
 }
 
-void basicFunction ::resetGame(Snake &snake)
+void Background ::resetGame()
 {
     gameIsStarted = true;
     collisionDetected = false;
@@ -566,13 +593,9 @@ void basicFunction ::resetGame(Snake &snake)
     snakeBody.clear();
     snakeCurrentDirection = 'r';
     pressedKey = '/'; // default value;
-
-    // Reset necessary game states or variables here
-    initializeSnake(snake);
-    initializeFruit();
 }
 
-void basicFunction ::getUserName(void)
+void Background ::getUserName(void)
 {
     string userInput = "";
     cout << "Enter Your Name Here: ";
@@ -583,6 +606,59 @@ void basicFunction ::getUserName(void)
             break;
         userName.push_back(userInput[i]);
     }
+}
+
+Fruit ::Fruit()
+{
+    // create texture for all available fruits
+    textureFruit[0] = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP("./Fruits/apple.bmp"));
+    textureFruit[1] = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP("./Fruits/grapes.bmp"));
+    textureFruit[2] = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP("./Fruits/cherry.bmp"));
+    textureFruit[3] = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP("./Fruits/banana.bmp"));
+    textureFruit[4] = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP("./Fruits/pear.bmp"));
+    textureFruit[5] = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP("./Fruits/bonusFruit.bmp"));
+
+    // find the co-ordinate of the fruit
+    fruitControl.w = fruitWidth;
+    fruitControl.h = fruitHeight;
+    fruitControl.x = rand() % SCREEN_WIDTH;
+    fruitControl.y = rand() % SCREEN_HEIGHT;
+    // avoid snake body & other obstacles
+    while (SDL_HasIntersection(&fruitControl, &snakeBody[0]) ||
+           SDL_HasIntersection(&fruitControl, &scoreTextRect) ||
+           SDL_HasIntersection(&fruitControl, &boarderTopRect) ||
+           SDL_HasIntersection(&fruitControl, &boarderBottomRect) ||
+           SDL_HasIntersection(&fruitControl, &boarderLeftRect) ||
+           SDL_HasIntersection(&fruitControl, &boarderRightRect))
+    {
+        fruitControl.x = rand() % SCREEN_WIDTH;
+        fruitControl.y = rand() % SCREEN_HEIGHT;
+    }
+
+    // intialize bonus fruit
+    bonusFruitControl.w = fruitWidth;
+    bonusFruitControl.h = fruitHeight;
+
+    // pick A random fruit;
+    pickFruit = rand() % (totalFruitTexture - 1);
+}
+
+Snake ::Snake(string filePath)
+{
+    initialSnake.w = snakeWidth;
+    initialSnake.h = snakeHeight;
+    initialSnake.x = boarderWidth + 1;
+    initialSnake.y = (SCREEN_HEIGHT - initialSnake.w) / 2;
+
+    textureSnakeSkin = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP(filePath.c_str()));
+
+    snakeBody.push_back(initialSnake);
+
+    // speed increase after a certain score
+    // use the current system time ass seed to generate pseudo-random values;
+    srand((unsigned)time(0));
+    incraseSpeedAfter = 10 + rand() % 11;
+    SDL_Log("Increase Snake Speed After: %d", incraseSpeedAfter);
 }
 
 void drawFunction ::drawBackground(void)
@@ -613,10 +689,10 @@ void drawFunction ::drawBackground(void)
     SDL_SetTextureBlendMode(textureWater[1], SDL_BLENDMODE_MOD);
 
     // draw boarder
-    SDL_RenderCopy(renderer, textureBoarder[0], NULL, &rect5);
-    SDL_RenderCopy(renderer, textureBoarder[0], NULL, &rect6);
-    SDL_RenderCopy(renderer, textureBoarder[0], NULL, &rect7);
-    SDL_RenderCopy(renderer, textureBoarder[0], NULL, &rect8);
+    SDL_RenderCopy(renderer, textureBoarder[0], NULL, &boarderTopRect);
+    SDL_RenderCopy(renderer, textureBoarder[0], NULL, &boarderBottomRect);
+    SDL_RenderCopy(renderer, textureBoarder[0], NULL, &boarderLeftRect);
+    SDL_RenderCopy(renderer, textureBoarder[0], NULL, &boarderRightRect);
     SDL_RenderCopy(renderer, textureBoarder[0], NULL, &scoreTextRect);
     SDL_SetTextureBlendMode(textureBoarder[0], SDL_BLENDMODE_ADD);
 }
@@ -624,31 +700,31 @@ void drawFunction ::drawBackground(void)
 void drawFunction ::drawFruit(void)
 {
     // snake ate the fruit
-    if (((snakeBody[0].x + snakeWidth) >= fruitControl.x && snakeBody[0].x <= (fruitControl.x + fruitWidth)) &&
-        ((snakeBody[0].y + snakeHeight) >= fruitControl.y && snakeBody[0].y <= (fruitControl.y + fruitHeight)))
+    if (SDL_HasIntersection(&fruitControl, &snakeBody[0]))
     {
         snakeAteFruit = true;
         // spawn new fruit. i.e., pick a random fruit & also avoid snake body
-        srand((unsigned)time(0));
         pickFruit = rand() % (totalFruitTexture - 1);
         // avoid snake body & bonus fruit
         bool fruitInsideSnake = true;
         while (fruitInsideSnake)
         {
-            fruitControl.x = boarderWidth + (rand() % (SCREEN_WIDTH - fruitWidth - boarderWidth - scoreTextRect.w));
-            fruitControl.y = scoreTextRect.h + (rand() % (SCREEN_HEIGHT - fruitHeight - boarderHeight - scoreTextRect.h));
+            fruitControl.x = boarderWidth + (rand() % (SCREEN_WIDTH - fruitWidth - 2 * boarderWidth));
+            fruitControl.y = boarderHeight + (rand() % (SCREEN_HEIGHT - fruitHeight - 2 * boarderHeight));
+
+            if (SDL_HasIntersection(&fruitControl, &scoreTextRect))
+                continue;
 
             // avoid bonus fruit if exists
             if (bonusFruitPositionFound)
             {
-                if ((bonusFruitControl.x >= fruitControl.x && bonusFruitControl.x <= (fruitControl.x + fruitWidth)) || ((bonusFruitControl.x + fruitWidth) >= fruitControl.x && (bonusFruitControl.x + fruitWidth) <= (fruitControl.x + fruitWidth)))
+                if (SDL_HasIntersection(&bonusFruitControl, &fruitControl))
                     continue;
             }
             // avoid snake body
             for (int i = 0; i < snakeBody.size(); i++)
             {
-                if (((snakeBody[i].x + snakeWidth) >= fruitControl.x && snakeBody[i].x <= (fruitControl.x + fruitWidth)) &&
-                    ((snakeBody[i].y + snakeHeight) >= fruitControl.y && snakeBody[i].y <= (fruitControl.y + fruitHeight)))
+                if (SDL_HasIntersection(&snakeBody[i], &fruitControl))
                 {
                     fruitInsideSnake = true;
                     break;
@@ -739,7 +815,7 @@ void drawFunction ::drawScore(drawFunction &draw, const char *score)
                    NULL, &scoreTextRect);
 }
 
-void drawFunction ::drawAllTimeBestScore(drawFunction &draw, Snake &snake)
+void drawFunction ::drawAllTimeBestScore(drawFunction &draw, Snake *snake)
 {
     // calculate all time best
     // there are five all time best scores are saved
@@ -822,10 +898,10 @@ void drawFunction ::drawAllTimeBestScore(drawFunction &draw, Snake &snake)
     sort(allTimeBestIntervals.begin(), allTimeBestIntervals.end());
     inInterval.close();
 
-    if (snake.incraseSpeedAfter > allTimeBestIntervals[0].first && !newLuckyInterVal)
+    if (snake->incraseSpeedAfter > allTimeBestIntervals[0].first && !newLuckyInterVal)
     {
         newLuckyInterVal = true;
-        allTimeBestIntervals[0].first = snake.incraseSpeedAfter;
+        allTimeBestIntervals[0].first = snake->incraseSpeedAfter;
         allTimeBestIntervals[0].second = userName + ':';
         sort(allTimeBestIntervals.begin(), allTimeBestIntervals.end());
     }
@@ -1020,67 +1096,4 @@ bool Collision::detectCollision(void)
     }
 
     return false;
-}
-
-void Sound::playWAVSound(const char *filePath)
-{
-
-    SDL_AudioSpec wavSpec;
-    Uint32 wavLength;
-    Uint8 *wavBuffer;
-
-    if (SDL_LoadWAV(filePath, &wavSpec, &wavBuffer, &wavLength) == nullptr)
-    {
-        printf("Could not load audio file.\nError: %s\n",
-               SDL_GetError());
-        return;
-    }
-
-    SDL_AudioDeviceID deviceId = SDL_OpenAudioDevice(nullptr, 0, &wavSpec, nullptr, 0);
-    if (deviceId == 0)
-    {
-        printf("Failed to open audio device.\nError: %s\n",
-               SDL_GetError());
-        SDL_FreeWAV(wavBuffer);
-        return;
-    }
-
-    SDL_QueueAudio(deviceId, wavBuffer, wavLength);
-
-    SDL_PauseAudioDevice(deviceId, 0);
-
-    while (SDL_GetQueuedAudioSize(deviceId) > 0 && gameIsRunning && !collisionSoundPlayed)
-    {
-        SDL_Delay(10); // Add a short delay to avoid busy-waiting
-    }
-
-    SDL_CloseAudioDevice(deviceId);
-    SDL_FreeWAV(wavBuffer);
-}
-
-void Sound::eatFruit(void)
-{
-    int pickSoundTrack = 0;
-    while (!taskBackgroundFinished)
-    {
-        if (gameIsPaused && !pauseScreenSoundPlayed)
-        {
-            playWAVSound("./Sounds/pauseScreen.wav");
-            pauseScreenSoundPlayed = true;
-        }
-        pickSoundTrack = rand() % totalFruitEatingSound;
-        if (snakeAteBonusFruit)
-        {
-            playWAVSound("./Sounds/eatBonusFruit.wav");
-            snakeAteBonusFruit = false;
-        }
-        else if (snakeAteFruit)
-            playWAVSound(soundEating[pickSoundTrack].c_str());
-        if (collisionDetected && !collisionSoundPlayed) // play collision sound only once
-        {
-            pickSoundTrack = rand() % totalCollisionSound;
-            playWAVSound(soundCollision[pickSoundTrack].c_str());
-            collisionSoundPlayed = true;
-        }
-    }
 }
