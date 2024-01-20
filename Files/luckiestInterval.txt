@@ -1,10 +1,10 @@
+mx:20
+max:20
+max:20
+max:20
+max:20
+max:20
+darkEye:20
+darkEye:20
+d:20
 Ashraful Islam:20
-Ashraful Islam:17
-playerName:0
-playerName:0
-playerName:0
-playerName:0
-playerName:0
-playerName:0
-playerName:0
-playerName:0
