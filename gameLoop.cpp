@@ -9,6 +9,7 @@
 #include <ctime>
 #include <fstream>
 #include <iostream>
+#include <sstream>
 using namespace std;
 
 #define SCREEN_WIDTH 1080
@@ -18,19 +19,15 @@ SDL_Renderer *renderer = NULL;
 bool gameIsRunning = false,
      gameIsStarted = false,
      collisionDetected = false,
-     snakeAteFruit = false,
-     snakeAteBonusFruit = false,
      keyWasPressed = false,
      gameIsPaused = false,
      fontIsInitialized = false,
      increaseOpacity = false,
      collisionSoundPlayed = false,
-     bonusFruitTimerFlag = false,
-     bonusFruitPositionFound = false,
      pauseScreenSoundPlayed = false,
      newHighScore = false,
-     startTheGameNow = false,
-     newLuckyInterVal = false;
+     newMostSurvived = false,
+     startTheGameNow = false;
 
 // global variable for updating states of the game
 const int totalWaterTexture = 2,
@@ -58,15 +55,18 @@ int snakeVelocity = snakeInitialVelocity,
     vSyncActive,
     prevResult = 0;
 
-uint32_t startTime;
-Uint8 textOpacity = 255;
+uint32_t startTime,
+    startPlaying,
+    startPause;
+double totalPausedTime = 0.0,
+       timePlayed = 0.0;
+
 char snakeCurrentDirection = 'r', // by default snake is facing the right side
     pressedKey;
 
 vector<SDL_Rect> snakeBody;
-string userName = "";
 SDL_Rect rect1, rect2, rect3, rect4, boarderTopRect, boarderBottomRect, boarderLeftRect, boarderRightRect,
-    fruitControl, bonusFruitControl, middleScreenTextRect, scoreTextRect, screenTopTextRect, screenBottomBoxRectangle, screenBottomLeftBox;
+    fruitControl, bonusFruitControl, middleScreenTextRect, scoreTextRect, screenTopTextRect, screenBottomBoxRectangle, screenBottomLeftBox, mainMenuRect;
 SDL_Texture *textureWater[totalWaterTexture],
     *textureBoarder[totalBoarderTexture],
     *textureMenu[totalMenuTexture],
@@ -108,13 +108,22 @@ void processInput(void)
             case SDLK_k:
                 keyWasPressed = false;
                 if (!gameIsStarted && !collisionDetected && startTheGameNow)
+                {
+                    startPlaying = SDL_GetTicks();
                     gameIsStarted = true;
+                }
                 else
                 {
                     if (gameIsPaused)
+                    {
                         gameIsPaused = false;
+                        totalPausedTime += (SDL_GetTicks() - startPause);
+                    }
                     else
+                    {
+                        startPause = SDL_GetTicks();
                         gameIsPaused = true;
+                    }
                 }
                 if (collisionDetected && collisionSoundPlayed)
                     pressedKey = 'k'; // k and space both key will do the same thing
@@ -142,6 +151,10 @@ public:
     void updateSnakePosition(int);
     void updateSnakeSize(void);
     void updateSnakeDirection(char);
+    void Render(SDL_Rect &snakePart, SDL_Texture &snakeTexture)
+    {
+        SDL_RenderCopy(renderer, &snakeTexture, NULL, &snakePart);
+    }
 
 private:
     SDL_Rect initialSnake;
@@ -150,49 +163,50 @@ private:
 class Fruit
 {
 public:
+    bool bonusFruitTimerFlag = false;
+    int bonusFruitIndex = 5; // index of bonus fruit
     // initialize the fruit using constructor
     Fruit();
-};
 
-class Font
-{
-public:
-    Font()
+    void Render(SDL_Rect &fruitRect, SDL_Texture &fruitTexture)
     {
-        if (TTF_Init() == -1)
-        {
-            printf("TTF failed to initialize\nError: %s\n",
-                   TTF_GetError());
-        }
+        SDL_RenderCopy(renderer, &fruitTexture, NULL, &fruitRect);
     }
+
+    void renderScore();
+    void initializeBonusFruit();
 };
 
 class Music
 {
 public:
-    Music(string filePath, bool isMusic)
+    Music()
     {
-        if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 1024) == -1)
+        if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 4, 1024) == -1)
             cout << "Audio Library Is Not Working\nError: " << Mix_GetError() << endl;
-
-        if (isMusic)
-            music = Mix_LoadMUS(filePath.c_str());
-        else
-            chunk = Mix_LoadWAV(filePath.c_str());
     }
 
-    void playMusic(int loops)
+    ~Music()
     {
+        Mix_FreeMusic(music);
+        Mix_FreeChunk(chunk);
+        Mix_CloseAudio();
+    }
+
+    void playMusic(string filePath, int loops, int ms)
+    {
+        music = Mix_LoadMUS(filePath.c_str());
         // loops = 0 for 0
         //-1 for foreever loop
         if (music != nullptr)
-            Mix_PlayMusic(music, loops);
+            Mix_FadeInMusic(music, loops, ms);
     }
 
-    int playChuck(int channel, int loops)
+    int playChuck(string filePath, int channel, int loops, int ms)
     {
+        chunk = Mix_LoadWAV(filePath.c_str());
         if (chunk != nullptr)
-            return Mix_PlayChannel(channel, chunk, loops);
+            return Mix_FadeInChannel(channel, chunk, loops, ms);
         return -1;
     }
 
@@ -208,16 +222,21 @@ public:
     }
 
 private:
-    Mix_Music *music;
-    Mix_Chunk *chunk;
+    Mix_Music *music = nullptr;
+    Mix_Chunk *chunk = nullptr;
 };
 
 class Background
 {
 public:
-    Background() : pauseSound("./Sounds/pauseGame.wav", false),
-                   resumeSound("./Sounds/resumeGame.wav", false),
-                   bonusFruitSound("./Sounds/eatBonusFruit.wav", false)
+    vector<string> backgroundMusic, fruitEatingSound, collisionSound;
+    string pauseSound, resumeSound, bonusFruitSound,
+        userName = "";
+
+    int fadeInChunck = 40,
+        fadeInMusic = 1000;
+
+    Background()
     {
         gameIsRunning = initializeWindow();
         initializeBackground();
@@ -225,44 +244,70 @@ public:
     bool initializeWindow();
     void initializeBackground();
     void resetGame();
-    void backgroundActivities();
     void getUserName();
-
-private:
-    vector<Music> backgroundMusic, fruitEatingSound, collisionSound;
-    Music pauseSound, resumeSound, bonusFruitSound;
+    void Render();
 };
 
-class drawFunction
+class Font
 {
 public:
-    void drawBackground(void);
-    void drawFruit(void);
-    void drawBonusFruit(void);
-    SDL_Texture *drawText(const char *, const char *, int, SDL_Color);
-    void drawMiddleScreenText(drawFunction &, const char *);
-    void drawScore(drawFunction &, const char *);
-    void drawAllTimeBestScore(drawFunction &, Snake *);
+    string standardFontBold = "./Fonts/robotoMonoBold.ttf",
+           standardFont = "./Fonts/robotoMonoRegular.ttf";
+    Uint8 textOpacity = SDL_ALPHA_OPAQUE; // this will be used to create blinking effect
+    Font()
+    {
+        if (TTF_Init() == -1)
+        {
+            printf("TTF failed to initialize\nError: %s\n",
+                   TTF_GetError());
+        }
+    }
+    ~Font()
+    {
+        TTF_Quit();
+    }
 
-private:
-    SDL_Texture *texture;
+    void Render(string filePath, int fontSize, string message, SDL_Color textColor, SDL_Rect &textRect)
+    {
+        TTF_Font *font = TTF_OpenFont(filePath.c_str(), fontSize);
+        TTF_SetFontWrappedAlign(font, TTF_WRAPPED_ALIGN_CENTER);
+        SDL_Surface *surface = TTF_RenderText_Blended_Wrapped(font, message.c_str(), textColor, textRect.w);
+        SDL_Texture *texture = SDL_CreateTextureFromSurface(renderer, surface);
+        SDL_FreeSurface(surface);
+
+        SDL_RenderCopy(renderer, texture, nullptr, &textRect);
+        SDL_DestroyTexture(texture);
+        TTF_CloseFont(font);
+    }
+
+    void renderAllTimeBestScores(Snake *, Background &);
+
+    void blinkingEffect()
+    {
+        if (textOpacity <= 80)
+            increaseOpacity = true;
+        if (textOpacity >= 250)
+            increaseOpacity = false;
+        if (increaseOpacity)
+            textOpacity += 10;
+        else
+            textOpacity -= 10;
+    }
 };
 
 class Collision
 {
 public:
     bool detectCollision(void);
+    bool detectCollisionWithFruit(Snake *);
+    bool detectCollisionWithBonusFruit();
 };
 
-void destroyBackground(Fruit *fruit, Snake *snake, Font *font, Background *background)
+void destroyBackground(Fruit *fruit, Snake *snake)
 {
     delete fruit;
     delete snake;
-    delete font;
-    delete background;
 
-    SDL_DestroyRenderer(renderer);
-    SDL_DestroyWindow(window);
     for (int i = 0; i < totalWaterTexture; i++)
         SDL_DestroyTexture(textureWater[i]);
     for (int i = 0; i < totalBoarderTexture; i++)
@@ -272,32 +317,96 @@ void destroyBackground(Fruit *fruit, Snake *snake, Font *font, Background *backg
     for (int i = 0; i < totalMenuTexture; i++)
         SDL_DestroyTexture(textureMenu[i]);
     SDL_DestroyTexture(textureSnakeSkin);
-    TTF_Quit();
+
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
     SDL_Quit();
 }
 
-void Update(Snake *snake, drawFunction &draw, Collision &collision, Background *background)
+void Update(Snake *snake, Collision &collision, Background &background, Music &music, Fruit *fruit,
+            Font &font)
 {
     SDL_RenderClear(renderer);
 
-    draw.drawBackground();
-    draw.drawFruit();
-    draw.drawScore(draw, to_string(totalScore).c_str()); // convert int to string then character array then pass to drawScore
+    background.Render();
+    // check whether the snake eat the fruit or not
+    if (collision.detectCollisionWithFruit(snake))
+    {
+        music.playChuck(background.fruitEatingSound[rand() % totalFruitEatingSound], 2, 0,
+                        background.fadeInChunck);
+
+        totalScore++;
+        // check for bonus fruit
+        if (!fruit->bonusFruitTimerFlag && totalScore % 7 == 0)
+        {
+            startTime = SDL_GetTicks();
+            fruit->initializeBonusFruit();
+            fruit->bonusFruitTimerFlag = true;
+        }
+    }
+    if (fruit->bonusFruitTimerFlag)
+    {
+        if (collision.detectCollisionWithBonusFruit())
+        {
+            music.playChuck(background.bonusFruitSound, 1, 0, background.fadeInChunck);
+            snake->updateSnakeSize();
+
+            totalScore += 10;
+            fruit->bonusFruitTimerFlag = false;
+        }
+        else
+        {
+            double elapsedTime = (SDL_GetTicks() - startTime) / 1000.0;
+            if (elapsedTime <= 4.0)
+                fruit->Render(bonusFruitControl, *textureFruit[fruit->bonusFruitIndex]);
+            else
+                fruit->bonusFruitTimerFlag = false;
+        }
+    }
+
+    font.blinkingEffect();
+    // render regular fruit, score and snake
+    fruit->Render(fruitControl, *textureFruit[pickFruit]);
+    font.Render(font.standardFontBold, 24, to_string(totalScore), {0, 0, 0, 255}, scoreTextRect);
+    for (int i = 0; i < snakeBody.size(); i++)
+        snake->Render(snakeBody[i], *textureSnakeSkin);
 
     // detect collision
     if (collision.detectCollision())
     {
-        draw.drawAllTimeBestScore(draw, snake);
-        string message = "       Game Over\n     Final Score: " + to_string(totalScore) + "\nPress Space To Play Again";
-        draw.drawMiddleScreenText(draw, message.c_str());
+        font.renderAllTimeBestScores(snake, background);
+
+        // render game over screen
+        SDL_Rect gameOverRect = {middleScreenTextRect.x, middleScreenTextRect.y, middleScreenTextRect.w, 80};
+        font.Render(font.standardFont, 30, "Game Over\nFinal Score: " + to_string(totalScore), {0, 255, 255, font.textOpacity}, gameOverRect);
+        gameOverRect.y += gameOverRect.h;
+        font.Render(font.standardFont, 30, "Survival Time: " + to_string((int)timePlayed) + " Seconds\nPress Space To Play Again", {255, 255, 0, font.textOpacity}, gameOverRect);
+
         gameIsStarted = false;
         collisionDetected = true;
+
+        if (!collisionSoundPlayed)
+        {
+            music.stopMusic();
+            music.playChuck(background.collisionSound[rand() % totalCollisionSound], -1, 0, background.fadeInChunck);
+            collisionSoundPlayed = true;
+        }
     }
 
     if (gameIsStarted)
     {
         if (gameIsPaused)
-            draw.drawMiddleScreenText(draw, "Press Space To Resume"); // draw pause screen
+        {
+            // render pause screen
+            font.Render(font.standardFont, 30, "Press Space To Resume", {255, 255, 255, font.textOpacity}, middleScreenTextRect);
+
+            if (!pauseScreenSoundPlayed)
+            {
+                //-1 to play the chunk on the first free channel
+                music.playChuck(background.pauseSound, 0, 0, background.fadeInChunck);
+                pauseScreenSoundPlayed = true;
+            }
+        }
         else
         {
             if (keyWasPressed)
@@ -306,30 +415,13 @@ void Update(Snake *snake, drawFunction &draw, Collision &collision, Background *
                 keyWasPressed = false;
             }
             snake->updateSnakePosition(snakeVelocity);
-        }
 
-        if (bonusFruitTimerFlag)
-        {
-            draw.drawBonusFruit();
-            double elapsedTime = (SDL_GetTicks() - startTime) / 1000.0;
-            if (elapsedTime >= 4)
+            if (!Mix_PlayingMusic())
+                music.playMusic(background.backgroundMusic[rand() % totalBackgroundSound], 0, background.fadeInMusic);
+            if (pauseScreenSoundPlayed)
             {
-                bonusFruitPositionFound = false;
-                bonusFruitTimerFlag = false;
-            }
-        }
-
-        if (snakeAteFruit)
-        {
-            totalScore++;
-            snake->updateSnakeSize();
-            snakeAteFruit = false;
-
-            // check for bonus fruit
-            if (!bonusFruitTimerFlag && totalScore % 7 == 0)
-            {
-                bonusFruitTimerFlag = true;
-                startTime = SDL_GetTicks();
+                music.playChuck(background.resumeSound, 0, 0, background.fadeInChunck);
+                pauseScreenSoundPlayed = false;
             }
         }
 
@@ -344,18 +436,17 @@ void Update(Snake *snake, drawFunction &draw, Collision &collision, Background *
     else if (!collisionDetected)
     {
         // do these operations before starting the game
-        while (userName.empty())
-            background->getUserName();
+        while (background.userName.empty())
+            background.getUserName();
 
-        if (!userName.empty())
+        if (!background.userName.empty())
         {
-            draw.drawMiddleScreenText(draw, "Press Space To Start");
+            // render start screen
+            font.Render(font.standardFont, 30, "Press Space To Start", {255, 255, 255, font.textOpacity}, middleScreenTextRect);
+
             startTheGameNow = true;
         }
     }
-
-    if (gameIsPaused || !gameIsStarted || collisionDetected)
-        snake->updateSnakePosition(0); // This Will Draw Current State Of The Snake
 
     // vSync failed to activate so a 20 ms delay is the adjustment
     if (vSyncActive != 0)
@@ -366,16 +457,12 @@ void Update(Snake *snake, drawFunction &draw, Collision &collision, Background *
 int main(int argc, char **argv)
 {
     // make class objects
-    drawFunction draw;
     Collision collision;
-
-    Background *background = new Background();
-    Font *font = new Font();
+    Background background;
+    Font font;
     Snake *snake = new Snake("./Snake/skin.bmp");
     Fruit *fruit = new Fruit();
-
-    // run background activities in a diffrent thread
-    thread taskThread(&Background::backgroundActivities, background);
+    Music music;
 
     while (gameIsRunning)
     {
@@ -383,23 +470,24 @@ int main(int argc, char **argv)
         // reset the game
         if (collisionDetected && pressedKey == 'k')
         {
+            startPlaying = SDL_GetTicks();
+            music.stopMusic();
             delete snake;
             delete fruit;
-            background->resetGame();
+            background.resetGame();
             snake = new Snake("./Snake/skin.bmp");
             fruit = new Fruit();
         }
-        Update(snake, draw, collision, background);
+        Update(snake, collision, background, music, fruit, font);
     }
 
-    taskThread.join(); // wait for the thread to finish
-    destroyBackground(fruit, snake, font, background);
+    destroyBackground(fruit, snake);
 }
 
 // implimentation of all prototype functions
 bool Background ::initializeWindow(void)
 {
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0)
+    if (SDL_Init(SDL_INIT_VIDEO) < 0)
     {
         printf("Error: SDL Failed to initialize\n SDL Error: %s", SDL_GetError());
         return false;
@@ -463,11 +551,8 @@ void Background ::initializeBackground(void)
     rect4.w = SCREEN_WIDTH;
     rect4.h = SCREEN_HEIGHT;
 
-    SDL_Surface *surface = SDL_GetWindowSurface(window);
-    surface = SDL_LoadBMP("./Background/water.bmp");
-    textureWater[0] = SDL_CreateTextureFromSurface(renderer, surface);
-    textureWater[1] = SDL_CreateTextureFromSurface(renderer, surface);
-    SDL_FreeSurface(surface);
+    textureWater[0] = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP("./Background/water.bmp"));
+    textureWater[1] = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP("./Background/water.bmp"));
 
     // initialize boarder
     boarderTopRect.x = 0;
@@ -499,13 +584,13 @@ void Background ::initializeBackground(void)
     middleScreenTextRect.y = (SCREEN_HEIGHT - middleScreenTextRect.h) / 2;
 
     // initialize top Screen Text rectangle
-    screenTopTextRect.w = 800;
-    screenTopTextRect.h = 140;
+    screenTopTextRect.w = 600;
+    screenTopTextRect.h = 100;
     screenTopTextRect.x = (SCREEN_WIDTH - screenTopTextRect.w) / 2;
     screenTopTextRect.y = boarderHeight + 30;
 
     // initialize bottom screen box rectangle
-    screenBottomBoxRectangle.w = 200;
+    screenBottomBoxRectangle.w = 240;
     screenBottomBoxRectangle.h = SCREEN_HEIGHT - boarderHeight - scoreTextRect.h;
     screenBottomBoxRectangle.x = (SCREEN_WIDTH - screenBottomBoxRectangle.w) - boarderWidth;
     screenBottomBoxRectangle.y = (SCREEN_HEIGHT - screenBottomBoxRectangle.h) - boarderHeight;
@@ -516,77 +601,37 @@ void Background ::initializeBackground(void)
     screenBottomLeftBox.x = boarderWidth;
     screenBottomLeftBox.y = screenTopTextRect.y + screenTopTextRect.h;
 
+    // initialize a rectangle for main menu
+    mainMenuRect.w = 250;
+    mainMenuRect.h = 300;
+    mainMenuRect.x = (SCREEN_WIDTH - mainMenuRect.w) / 2;
+    mainMenuRect.y = (SCREEN_HEIGHT - mainMenuRect.h) / 2;
+
     // initialize fruit eating and background sounds
     for (int i = 0; i < totalBackgroundSound; i++)
-        backgroundMusic.emplace_back("./Sounds/backgroundTrack" + to_string(i + 1) + ".mp3", true);
+        backgroundMusic.push_back("./Sounds/backgroundTrack" + to_string(i + 1) + ".mp3");
     for (int i = 0; i < totalFruitEatingSound; i++)
-        fruitEatingSound.emplace_back("./Sounds/eatFruit" + to_string(i + 1) + ".wav", false);
+        fruitEatingSound.push_back("./Sounds/eatFruit" + to_string(i + 1) + ".wav");
     for (int i = 0; i < totalCollisionSound; i++)
-        collisionSound.emplace_back("./Sounds/gameOver" + to_string(i + 1) + ".wav", false);
-}
-
-void Background::backgroundActivities(void)
-{
-    // this function will run in a diffrent thread
-
-    while (gameIsRunning)
-    {
-        if (gameIsStarted && !collisionDetected)
-        {
-            if (!Mix_PlayingMusic())
-                backgroundMusic[rand() % totalBackgroundSound].playMusic(0);
-            if (gameIsPaused && !pauseScreenSoundPlayed)
-            {
-                //-1 to play the chunk on the first free channel
-                pauseSound.playChuck(0, 0);
-                pauseScreenSoundPlayed = true;
-            }
-            if (!gameIsPaused && pauseScreenSoundPlayed)
-            {
-                resumeSound.playChuck(0, 0);
-                pauseScreenSoundPlayed = false;
-            }
-
-            if (snakeAteBonusFruit)
-            {
-                bonusFruitSound.playChuck(0, 0);
-                snakeAteBonusFruit = false;
-            }
-            if (snakeAteFruit)
-                fruitEatingSound[rand() % totalFruitEatingSound].playChuck(0, 0);
-        }
-        else
-        {
-            if (collisionDetected && !collisionSoundPlayed) // play collision sound only once
-            {
-                int channel = collisionSound[rand() % totalCollisionSound].playChuck(-1, 0);
-
-                while (Mix_Playing(channel) == 1)
-                {
-                    if (!gameIsRunning)
-                        break;
-                    continue;
-                }
-                collisionSoundPlayed = true;
-            }
-            pauseSound.stopMusic();
-        }
-    }
+        collisionSound.push_back("./Sounds/gameOver" + to_string(i + 1) + ".wav");
+    pauseSound = "./Sounds/pauseGame.wav";
+    resumeSound = "./Sounds/resumeGame.wav";
+    bonusFruitSound = "./Sounds/eatBonusFruit.wav";
 }
 
 void Background ::resetGame()
 {
     gameIsStarted = true;
     collisionDetected = false;
-    snakeAteFruit = false;
     keyWasPressed = false;
     gameIsPaused = false;
     increaseOpacity = false;
     collisionSoundPlayed = false;
-    bonusFruitTimerFlag = false;
     pauseScreenSoundPlayed = false;
     newHighScore = false;
-    newLuckyInterVal = false;
+    newMostSurvived = false;
+    totalPausedTime = 0.0;
+    timePlayed = 0.0;
     totalScore = 0;
     prevResult = 0;
     snakeVelocity = snakeInitialVelocity;
@@ -643,12 +688,39 @@ Fruit ::Fruit()
     pickFruit = rand() % (totalFruitTexture - 1);
 }
 
+void Fruit ::initializeBonusFruit()
+{
+    // avoid snake body & regular fruit
+    bool fruitInsideSnake = true;
+    while (fruitInsideSnake)
+    {
+        bonusFruitControl.x = boarderWidth + (rand() % (SCREEN_WIDTH - fruitWidth - 2 * boarderWidth));
+        bonusFruitControl.y = boarderHeight + (rand() % (SCREEN_HEIGHT - fruitHeight - 2 * boarderHeight));
+
+        // avoid regular fruit & score showing rectangle
+        if (SDL_HasIntersection(&bonusFruitControl, &fruitControl) ||
+            SDL_HasIntersection(&bonusFruitControl, &scoreTextRect))
+            continue;
+        // avoid snake body
+        for (int i = 0; i < snakeBody.size(); i++)
+        {
+            if (SDL_HasIntersection(&snakeBody[i], &bonusFruitControl))
+            {
+                fruitInsideSnake = true;
+                break;
+            }
+            else
+                fruitInsideSnake = false;
+        }
+    }
+}
+
 Snake ::Snake(string filePath)
 {
     initialSnake.w = snakeWidth;
     initialSnake.h = snakeHeight;
     initialSnake.x = boarderWidth + 1;
-    initialSnake.y = (SCREEN_HEIGHT - initialSnake.w) / 2;
+    initialSnake.y = (SCREEN_HEIGHT - initialSnake.h) / 2;
 
     textureSnakeSkin = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP(filePath.c_str()));
 
@@ -661,7 +733,7 @@ Snake ::Snake(string filePath)
     SDL_Log("Increase Snake Speed After: %d", incraseSpeedAfter);
 }
 
-void drawFunction ::drawBackground(void)
+void Background ::Render(void)
 {
     // draw background images
     rect1.x++;
@@ -697,12 +769,11 @@ void drawFunction ::drawBackground(void)
     SDL_SetTextureBlendMode(textureBoarder[0], SDL_BLENDMODE_ADD);
 }
 
-void drawFunction ::drawFruit(void)
+bool Collision ::detectCollisionWithFruit(Snake *snake)
 {
-    // snake ate the fruit
     if (SDL_HasIntersection(&fruitControl, &snakeBody[0]))
     {
-        snakeAteFruit = true;
+        snake->updateSnakeSize();
         // spawn new fruit. i.e., pick a random fruit & also avoid snake body
         pickFruit = rand() % (totalFruitTexture - 1);
         // avoid snake body & bonus fruit
@@ -712,15 +783,10 @@ void drawFunction ::drawFruit(void)
             fruitControl.x = boarderWidth + (rand() % (SCREEN_WIDTH - fruitWidth - 2 * boarderWidth));
             fruitControl.y = boarderHeight + (rand() % (SCREEN_HEIGHT - fruitHeight - 2 * boarderHeight));
 
-            if (SDL_HasIntersection(&fruitControl, &scoreTextRect))
+            // avoid bonus fruit & score showing rectangle
+            if (SDL_HasIntersection(&bonusFruitControl, &fruitControl) ||
+                SDL_HasIntersection(&fruitControl, &scoreTextRect))
                 continue;
-
-            // avoid bonus fruit if exists
-            if (bonusFruitPositionFound)
-            {
-                if (SDL_HasIntersection(&bonusFruitControl, &fruitControl))
-                    continue;
-            }
             // avoid snake body
             for (int i = 0; i < snakeBody.size(); i++)
             {
@@ -733,89 +799,19 @@ void drawFunction ::drawFruit(void)
                     fruitInsideSnake = false;
             }
         }
+        return true;
     }
-    SDL_RenderCopy(renderer, textureFruit[pickFruit], NULL, &fruitControl);
+    return false;
 }
 
-void drawFunction ::drawBonusFruit(void)
+bool Collision::detectCollisionWithBonusFruit()
 {
-    int bonusFruitIndex = 5; // index of bonus fruit
-    if (!bonusFruitPositionFound)
-    {
-        bonusFruitPositionFound = true;
-        // spawn bonus fruit and avoid snake body or the other fruit;
-        // avoid snake body & regular fruit
-        bool fruitInsideSnake = true;
-        while (fruitInsideSnake)
-        {
-            bonusFruitControl.x = boarderWidth + (rand() % (SCREEN_WIDTH - fruitWidth - boarderWidth - scoreTextRect.w));
-            bonusFruitControl.y = scoreTextRect.h + (rand() % (SCREEN_HEIGHT - fruitHeight - boarderHeight - scoreTextRect.h));
-
-            // avoid regular fruit
-            if ((bonusFruitControl.x >= fruitControl.x && bonusFruitControl.x <= (fruitControl.x + fruitWidth)) || ((bonusFruitControl.x + fruitWidth) >= fruitControl.x && (bonusFruitControl.x + fruitWidth) <= (fruitControl.x + fruitWidth)))
-                continue;
-            // avoid snake body
-            for (int i = 0; i < snakeBody.size(); i++)
-            {
-                if (((snakeBody[i].x + snakeWidth) >= bonusFruitControl.x && snakeBody[i].x <= (bonusFruitControl.x + fruitWidth)) &&
-                    ((snakeBody[i].y + snakeHeight) >= bonusFruitControl.y && snakeBody[i].y <= (bonusFruitControl.y + fruitHeight)))
-                {
-                    fruitInsideSnake = true;
-                    break;
-                }
-                else
-                    fruitInsideSnake = false;
-            }
-        }
-    }
-    SDL_RenderCopy(renderer, textureFruit[bonusFruitIndex], NULL, &bonusFruitControl);
-
-    // check whether the snake ate the bonus fruit
-    if (((snakeBody[0].x + snakeWidth) >= bonusFruitControl.x && snakeBody[0].x <= (bonusFruitControl.x + fruitWidth)) &&
-        ((snakeBody[0].y + snakeHeight) >= bonusFruitControl.y && snakeBody[0].y <= (bonusFruitControl.y + fruitHeight)))
-    {
-        snakeAteBonusFruit = true;
-        bonusFruitPositionFound = false;
-        bonusFruitTimerFlag = false;
-        totalScore += 10;
-    }
+    if (SDL_HasIntersection(&snakeBody[0], &bonusFruitControl))
+        return true;
+    return false;
 }
 
-SDL_Texture *drawFunction ::drawText(const char *fontFile, const char *message, int size, SDL_Color textColor)
-{
-    TTF_Font *font = TTF_OpenFont(fontFile, size);
-    SDL_Surface *surface = TTF_RenderText_Blended_Wrapped(font, message, textColor, middleScreenTextRect.w / 2 + 50);
-    texture = SDL_CreateTextureFromSurface(renderer, surface);
-    TTF_CloseFont(font);
-    SDL_FreeSurface(surface);
-
-    return texture;
-}
-
-void drawFunction ::drawMiddleScreenText(drawFunction &draw, const char *message)
-{
-    // create a blinking effect with opacity of the text
-    if (textOpacity < 80)
-        increaseOpacity = true;
-    if (textOpacity >= 250)
-        increaseOpacity = false;
-    if (increaseOpacity)
-        textOpacity += 10;
-    else
-        textOpacity -= 10;
-    SDL_RenderCopy(renderer,
-                   draw.drawText("Fonts/robotoMonoRegular.ttf", message, 24, {255, 255, 255, textOpacity}),
-                   NULL, &middleScreenTextRect);
-}
-
-void drawFunction ::drawScore(drawFunction &draw, const char *score)
-{
-    SDL_RenderCopy(renderer,
-                   draw.drawText("Fonts/robotoMonoBold.ttf", score, 18, {0, 0, 0, 255}),
-                   NULL, &scoreTextRect);
-}
-
-void drawFunction ::drawAllTimeBestScore(drawFunction &draw, Snake *snake)
+void Font ::renderAllTimeBestScores(Snake *snake, Background &background)
 {
     // calculate all time best
     // there are five all time best scores are saved
@@ -848,75 +844,19 @@ void drawFunction ::drawAllTimeBestScore(drawFunction &draw, Snake *snake)
     sort(allTimeBestScores.begin(), allTimeBestScores.end());
     in.close();
 
-    // work with velocity file
-    ifstream inVelocity;
-    inVelocity.open("./Files/saveHighestVelocity.txt");
-    getline(inVelocity, highestVelocityFromFile);
-    inVelocity.close();
-
-    int allTimeHighestVelocity = stoi(highestVelocityFromFile);
-    if (snakeVelocity >= allTimeHighestVelocity)
-        allTimeHighestVelocity = snakeVelocity;
-    string highestVelocity = "All Time Best Velocity: " +
-                             to_string(allTimeHighestVelocity);
-
     SDL_Color newScore = {255, 10, 10, SDL_ALPHA_OPAQUE},
               prevScore = {0, 255, 0, SDL_ALPHA_OPAQUE};
     if (totalScore > allTimeBestScores[0].first && !newHighScore)
     {
         newHighScore = true;
         allTimeBestScores[0].first = totalScore;
-        allTimeBestScores[0].second = userName + ':';
+        allTimeBestScores[0].second = background.userName + ':';
         sort(allTimeBestScores.begin(), allTimeBestScores.end());
     }
 
-    // work with luckiest interval file here
-    int totalSavedIntervals = 10;
-    vector<pair<int, string>> allTimeBestIntervals;
-    ifstream inInterval;
-    inInterval.open("./Files/luckiestInterval.txt");
-    for (int i = 0; i < totalSavedIntervals; i++)
-    {
-        getline(inInterval, getLineFromFile);
-        string getIntervalFromLine = "",
-               getNameFromLine = "";
-        bool startTakingInterval = false;
-        for (int i = 0; i < getLineFromFile.size(); i++)
-        {
-            if (startTakingInterval)
-                getIntervalFromLine.push_back(getLineFromFile[i]);
-            else
-            {
-                if (getLineFromFile[i] == ':')
-                    startTakingInterval = true;
-                getNameFromLine.push_back(getLineFromFile[i]);
-            }
-        }
-
-        allTimeBestIntervals.push_back({stoi(getIntervalFromLine), getNameFromLine});
-    }
-    sort(allTimeBestIntervals.begin(), allTimeBestIntervals.end());
-    inInterval.close();
-
-    if (snake->incraseSpeedAfter > allTimeBestIntervals[0].first && !newLuckyInterVal)
-    {
-        newLuckyInterVal = true;
-        allTimeBestIntervals[0].first = snake->incraseSpeedAfter;
-        allTimeBestIntervals[0].second = userName + ':';
-        sort(allTimeBestIntervals.begin(), allTimeBestIntervals.end());
-    }
-
-    // start rendering text from here
+    // render highest score
     string highestScore = "All Time Best Score: " + to_string(allTimeBestScores[totalSavedScores - 1].first);
-    SDL_RenderCopy(renderer,
-                   draw.drawText("Fonts/robotoMonoRegular.ttf", (highestScore + "\n" + highestVelocity).c_str(), 20, (newHighScore) ? newScore : prevScore),
-                   NULL, &screenTopTextRect);
-
-    // write to the velocity file
-    ofstream outVelocity;
-    outVelocity.open("./Files/saveHighestVelocity.txt");
-    outVelocity << allTimeHighestVelocity;
-    outVelocity.close();
+    Render(standardFont, 36, highestScore, ((newHighScore) ? newScore : prevScore), screenTopTextRect);
 
     // write to the score file
     ofstream out;
@@ -926,66 +866,121 @@ void drawFunction ::drawAllTimeBestScore(drawFunction &draw, Snake *snake)
     out.close();
 
     // show some best scores
-    SDL_RenderCopy(renderer,
-                   draw.drawText("Fonts/robotoMonoRegular.ttf", ("All Time Best Scores\n\n" + allTimeBestScores[totalSavedScores - 1].second + ' ' + to_string(allTimeBestScores[totalSavedScores - 1].first) + "\n" + allTimeBestScores[totalSavedScores - 2].second + ' ' + to_string(allTimeBestScores[totalSavedScores - 2].first) + "\n" + allTimeBestScores[totalSavedScores - 3].second + ' ' + to_string(allTimeBestScores[totalSavedScores - 3].first) + "\n" + allTimeBestScores[totalSavedScores - 4].second + ' ' + to_string(allTimeBestScores[totalSavedScores - 4].first) + "\n" + allTimeBestScores[totalSavedScores - 5].second + ' ' + to_string(allTimeBestScores[totalSavedScores - 5].first) + "\n" + allTimeBestScores[totalSavedScores - 6].second + ' ' + to_string(allTimeBestScores[totalSavedScores - 6].first) + "\n" + allTimeBestScores[totalSavedScores - 7].second + ' ' + to_string(allTimeBestScores[totalSavedScores - 7].first) + "\n" + allTimeBestScores[totalSavedScores - 8].second + ' ' + to_string(allTimeBestScores[totalSavedScores - 8].first) + "\n" + allTimeBestScores[totalSavedScores - 9].second + ' ' + to_string(allTimeBestScores[totalSavedScores - 9].first) + "\n" + allTimeBestScores[totalSavedScores - 10].second + ' ' + to_string(allTimeBestScores[totalSavedScores - 10].first) + "\n" + allTimeBestScores[totalSavedScores - 11].second + ' ' + to_string(allTimeBestScores[totalSavedScores - 11].first) + "\n" + allTimeBestScores[totalSavedScores - 12].second + ' ' + to_string(allTimeBestScores[totalSavedScores - 12].first) + "\n" + allTimeBestScores[totalSavedScores - 13].second + ' ' + to_string(allTimeBestScores[totalSavedScores - 13].first) + "\n" + allTimeBestScores[totalSavedScores - 14].second + ' ' + to_string(allTimeBestScores[totalSavedScores - 14].first) + "\n" + allTimeBestScores[totalSavedScores - 15].second + ' ' + to_string(allTimeBestScores[totalSavedScores - 15].first)).c_str(), 26, {255, 0, 255, SDL_ALPHA_OPAQUE}),
-                   NULL, &screenBottomBoxRectangle);
+    SDL_Rect bestScoresRect = {screenBottomBoxRectangle.x, screenBottomBoxRectangle.y, screenBottomBoxRectangle.w, 28};
+    Render("Fonts/robotoMonoRegular.ttf", 20, "All Time Best Scores", {255, 0, 255, 255}, bestScoresRect);
+    reverse(allTimeBestScores.begin(), allTimeBestScores.end());
+    SDL_Color scoreColor = {0, 255, 255, 255};
+    for (auto &bestScore : allTimeBestScores)
+    {
+        bestScoresRect.y += bestScoresRect.h;
+        Render("Fonts/robotoMonoRegular.ttf", 18, bestScore.second + ' ' + to_string(bestScore.first), scoreColor, bestScoresRect);
+        scoreColor.r += 17;
+        scoreColor.g -= 17;
+    }
+
+    // work with total survival time in seconds file here
+    int totalSavedSurvivalTime = 10;
+    vector<pair<int, string>> mostSurvivedInSeconds;
+    ifstream inTimeSpent;
+    inTimeSpent.open("./Files/secondsSurvived.txt");
+    for (int i = 0; i < totalSavedSurvivalTime; i++)
+    {
+        getline(inTimeSpent, getLineFromFile);
+        string getSecondsFromLine = "",
+               getNameFromLine = "";
+        bool startTakingSeconds = false;
+        for (int i = 0; i < getLineFromFile.size(); i++)
+        {
+            if (startTakingSeconds)
+                getSecondsFromLine.push_back(getLineFromFile[i]);
+            else
+            {
+                if (getLineFromFile[i] == ':')
+                    startTakingSeconds = true;
+                getNameFromLine.push_back(getLineFromFile[i]);
+            }
+        }
+
+        mostSurvivedInSeconds.push_back({stoi(getSecondsFromLine), getNameFromLine});
+    }
+    sort(mostSurvivedInSeconds.begin(), mostSurvivedInSeconds.end());
+    inTimeSpent.close();
+
+    if (!collisionDetected)
+        timePlayed = ((SDL_GetTicks() - startPlaying) - totalPausedTime) / 1000.0;
+    if (timePlayed > mostSurvivedInSeconds[0].first && !newMostSurvived)
+    {
+        newMostSurvived = true;
+        mostSurvivedInSeconds[0].first = timePlayed;
+        mostSurvivedInSeconds[0].second = background.userName + ':';
+        sort(mostSurvivedInSeconds.begin(), mostSurvivedInSeconds.end());
+    }
 
     // write to the luckiest file
-    ofstream outInterval;
-    outInterval.open("./Files/luckiestInterval.txt");
-    for (int i = totalSavedIntervals - 1; i >= 0; i--)
-        outInterval << allTimeBestIntervals[i].second << allTimeBestIntervals[i].first << endl;
-    outInterval.close();
+    ofstream outTimeSpent;
+    outTimeSpent.open("./Files/secondsSurvived.txt");
+    for (int i = totalSavedSurvivalTime - 1; i >= 0; i--)
+        outTimeSpent << mostSurvivedInSeconds[i].second << mostSurvivedInSeconds[i].first << endl;
+    outTimeSpent.close();
+
+    // show some best survival records in seconds
+    SDL_Rect mostTimeSpentRect = {screenBottomLeftBox.x, screenBottomLeftBox.y, screenBottomLeftBox.w, 80};
+    Render("Fonts/robotoMonoRegular.ttf", 20, "All Time Best Survival Records In Seconds", {255, 0, 255, 255}, mostTimeSpentRect);
+    reverse(mostSurvivedInSeconds.begin(), mostSurvivedInSeconds.end());
+    SDL_Color timeColor = {0, 255, 255, 255};
+    mostTimeSpentRect.y += mostTimeSpentRect.h;
+    mostTimeSpentRect.h = 30;
+    for (auto &mostSpent : mostSurvivedInSeconds)
+    {
+        Render("Fonts/robotoMonoRegular.ttf", 18, mostSpent.second + ' ' + to_string(mostSpent.first), timeColor, mostTimeSpentRect);
+        timeColor.r += 25;
+        timeColor.b -= 25;
+        mostTimeSpentRect.y += mostTimeSpentRect.h;
+    }
 
     // show some best intervals
-    SDL_RenderCopy(renderer,
-                   draw.drawText("Fonts/robotoMonoRegular.ttf", ("\tAll Time Best\n\tIntervals\n\n\t" + allTimeBestIntervals[totalSavedIntervals - 1].second + ' ' + to_string(allTimeBestIntervals[totalSavedIntervals - 1].first) + "\n\t" + allTimeBestIntervals[totalSavedIntervals - 2].second + ' ' + to_string(allTimeBestIntervals[totalSavedIntervals - 2].first) + "\n\t" + allTimeBestIntervals[totalSavedIntervals - 3].second + ' ' + to_string(allTimeBestIntervals[totalSavedIntervals - 3].first) + "\n\t" + allTimeBestIntervals[totalSavedIntervals - 4].second + ' ' + to_string(allTimeBestIntervals[totalSavedIntervals - 4].first) + "\n\t" + allTimeBestIntervals[totalSavedIntervals - 5].second + ' ' + to_string(allTimeBestIntervals[totalSavedIntervals - 5].first) + "\n\t" + allTimeBestIntervals[totalSavedIntervals - 6].second + ' ' + to_string(allTimeBestIntervals[totalSavedIntervals - 6].first) + "\n\t" + allTimeBestIntervals[totalSavedIntervals - 7].second + ' ' + to_string(allTimeBestIntervals[totalSavedIntervals - 7].first) + "\n\t" + allTimeBestIntervals[totalSavedIntervals - 8].second + ' ' + to_string(allTimeBestIntervals[totalSavedIntervals - 8].first) + "\n\t" + allTimeBestIntervals[totalSavedIntervals - 9].second + ' ' + to_string(allTimeBestIntervals[totalSavedIntervals - 9].first) + "\n\t" + allTimeBestIntervals[totalSavedIntervals - 10].second + ' ' + to_string(allTimeBestIntervals[totalSavedIntervals - 10].first)).c_str(), 26, {255, 0, 255, SDL_ALPHA_OPAQUE}),
-                   NULL, &screenBottomLeftBox);
+    // SDL_RenderCopy(renderer,
+    //                draw.drawText("Fonts/robotoMonoRegular.ttf", ("\tAll Time Best\n\tIntervals\n\n\t" + allTimeBestIntervals[totalSavedIntervals - 1].second + ' ' + to_string(allTimeBestIntervals[totalSavedIntervals - 1].first) + "\n\t" + allTimeBestIntervals[totalSavedIntervals - 2].second + ' ' + to_string(allTimeBestIntervals[totalSavedIntervals - 2].first) + "\n\t" + allTimeBestIntervals[totalSavedIntervals - 3].second + ' ' + to_string(allTimeBestIntervals[totalSavedIntervals - 3].first) + "\n\t" + allTimeBestIntervals[totalSavedIntervals - 4].second + ' ' + to_string(allTimeBestIntervals[totalSavedIntervals - 4].first) + "\n\t" + allTimeBestIntervals[totalSavedIntervals - 5].second + ' ' + to_string(allTimeBestIntervals[totalSavedIntervals - 5].first) + "\n\t" + allTimeBestIntervals[totalSavedIntervals - 6].second + ' ' + to_string(allTimeBestIntervals[totalSavedIntervals - 6].first) + "\n\t" + allTimeBestIntervals[totalSavedIntervals - 7].second + ' ' + to_string(allTimeBestIntervals[totalSavedIntervals - 7].first) + "\n\t" + allTimeBestIntervals[totalSavedIntervals - 8].second + ' ' + to_string(allTimeBestIntervals[totalSavedIntervals - 8].first) + "\n\t" + allTimeBestIntervals[totalSavedIntervals - 9].second + ' ' + to_string(allTimeBestIntervals[totalSavedIntervals - 9].first) + "\n\t" + allTimeBestIntervals[totalSavedIntervals - 10].second + ' ' + to_string(allTimeBestIntervals[totalSavedIntervals - 10].first)).c_str(), 26, {255, 0, 255, SDL_ALPHA_OPAQUE}),
+    //                NULL, &screenBottomLeftBox);
 }
 
 void Snake ::updateSnakePosition(int snakeVelocity)
 {
-    if (snakeVelocity)
+    switch (snakeCurrentDirection)
     {
-        switch (snakeCurrentDirection)
+    case 'r':
+        for (int i = snakeBody.size() - 1; i >= 1; i--)
         {
-        case 'r':
-            for (int i = snakeBody.size() - 1; i >= 1; i--)
-            {
-                snakeBody[i].x = snakeBody[i - 1].x;
-                snakeBody[i].y = snakeBody[i - 1].y;
-            }
-            snakeBody[0].x += snakeVelocity;
-            break;
-        case 'l':
-            for (int i = snakeBody.size() - 1; i >= 1; i--)
-            {
-                snakeBody[i].x = snakeBody[i - 1].x;
-                snakeBody[i].y = snakeBody[i - 1].y;
-            }
-            snakeBody[0].x -= snakeVelocity;
-            break;
-        case 'u':
-            for (int i = snakeBody.size() - 1; i >= 1; i--)
-            {
-                snakeBody[i].x = snakeBody[i - 1].x;
-                snakeBody[i].y = snakeBody[i - 1].y;
-            }
-            snakeBody[0].y -= snakeVelocity;
-            break;
-        case 'd':
-            for (int i = snakeBody.size() - 1; i >= 1; i--)
-            {
-                snakeBody[i].x = snakeBody[i - 1].x;
-                snakeBody[i].y = snakeBody[i - 1].y;
-            }
-            snakeBody[0].y += snakeVelocity;
-            break;
+            snakeBody[i].x = snakeBody[i - 1].x;
+            snakeBody[i].y = snakeBody[i - 1].y;
         }
+        snakeBody[0].x += snakeVelocity;
+        break;
+    case 'l':
+        for (int i = snakeBody.size() - 1; i >= 1; i--)
+        {
+            snakeBody[i].x = snakeBody[i - 1].x;
+            snakeBody[i].y = snakeBody[i - 1].y;
+        }
+        snakeBody[0].x -= snakeVelocity;
+        break;
+    case 'u':
+        for (int i = snakeBody.size() - 1; i >= 1; i--)
+        {
+            snakeBody[i].x = snakeBody[i - 1].x;
+            snakeBody[i].y = snakeBody[i - 1].y;
+        }
+        snakeBody[0].y -= snakeVelocity;
+        break;
+    case 'd':
+        for (int i = snakeBody.size() - 1; i >= 1; i--)
+        {
+            snakeBody[i].x = snakeBody[i - 1].x;
+            snakeBody[i].y = snakeBody[i - 1].y;
+        }
+        snakeBody[0].y += snakeVelocity;
+        break;
     }
-
-    for (int i = 0; i < snakeBody.size(); i++)
-        SDL_RenderCopy(renderer, textureSnakeSkin, NULL, &snakeBody[i]);
 }
 
 void Snake::updateSnakeSize(void)
@@ -1049,16 +1044,11 @@ void Snake ::updateSnakeDirection(char key)
 bool Collision::detectCollision(void)
 {
     // check collosion with boarder
-    if (snakeBody[0].x + snakeWidth >= SCREEN_WIDTH - boarderWidth)
-        return true;
-    else if (snakeBody[0].x <= boarderWidth)
-        return true;
-    else if (snakeBody[0].y <= boarderHeight)
-        return true;
-    else if (snakeBody[0].y + snakeHeight >= SCREEN_HEIGHT - boarderHeight)
-        return true;
-    else if ((snakeBody[0].x + snakeWidth >= scoreTextRect.x) &&
-             snakeBody[0].y <= scoreTextRect.h)
+    if (SDL_HasIntersection(&snakeBody[0], &boarderTopRect) ||
+        SDL_HasIntersection(&snakeBody[0], &boarderBottomRect) ||
+        SDL_HasIntersection(&snakeBody[0], &boarderLeftRect) ||
+        SDL_HasIntersection(&snakeBody[0], &boarderRightRect) ||
+        SDL_HasIntersection(&snakeBody[0], &scoreTextRect))
         return true;
 
     // check collision with snake body
