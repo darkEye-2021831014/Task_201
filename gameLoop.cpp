@@ -12,8 +12,8 @@
 #include <sstream>
 using namespace std;
 
-#define SCREEN_WIDTH 1080
-#define SCREEN_HEIGHT 540
+#define SCREEN_WIDTH 1180
+#define SCREEN_HEIGHT 600
 SDL_Window *window = NULL;
 SDL_Renderer *renderer = NULL;
 bool gameIsRunning = false,
@@ -27,17 +27,23 @@ bool gameIsRunning = false,
      pauseScreenSoundPlayed = false,
      newHighScore = false,
      newMostSurvived = false,
-     startTheGameNow = false;
+     startTheGameNow = false,
+     mainMenuActive = false,
+     goToGameScreen = false,
+     mouseButtonPressed = false,
+     showScorecard = false,
+     modeSelectionActive = false,
+     absoluteSnakeVelocity = false;
 
 // global variable for updating states of the game
 const int totalWaterTexture = 2,
           totalBoarderTexture = 1,
-          totalMenuTexture = 1,
           totalFruitTexture = 6,
           totalFruitEatingSound = 3,
+          totalMenuTexture = 9,
           totalCollisionSound = 3,
           totalBackgroundSound = 3,
-          snakeInitialVelocity = 6,
+          snakeInitialVelocity = 5,
           snakeColorRed = 100,
           snakeColorGreen = 255,
           snakeColorBlue = 100,
@@ -53,7 +59,8 @@ int snakeVelocity = snakeInitialVelocity,
     totalScore = 0,
     taskBackgroundFinished = 0,
     vSyncActive,
-    prevResult = 0;
+    prevResult = 0,
+    mouseX, mouseY;
 
 uint32_t startTime,
     startPlaying,
@@ -63,13 +70,13 @@ double totalPausedTime = 0.0,
 
 char snakeCurrentDirection = 'r', // by default snake is facing the right side
     pressedKey;
+string gameMode = "Easy";
 
 vector<SDL_Rect> snakeBody;
 SDL_Rect rect1, rect2, rect3, rect4, boarderTopRect, boarderBottomRect, boarderLeftRect, boarderRightRect,
-    fruitControl, bonusFruitControl, middleScreenTextRect, scoreTextRect, screenTopTextRect, screenBottomBoxRectangle, screenBottomLeftBox, mainMenuRect;
+    fruitControl, bonusFruitControl, middleScreenTextRect, scoreTextRect, screenTopTextRect, screenBottomBoxRectangle, screenBottomLeftBox, wholeObstacleOne, wholeObstacleTwo, wholeObstacleThree, wholeObstacleFour, wholeObstacleFive, wholeObstacleSix;
 SDL_Texture *textureWater[totalWaterTexture],
     *textureBoarder[totalBoarderTexture],
-    *textureMenu[totalMenuTexture],
     *textureFruit[totalFruitTexture],
     *textureSnakeSkin;
 
@@ -82,6 +89,15 @@ void processInput(void)
         {
         case SDL_QUIT:
             gameIsRunning = false;
+            break;
+        case SDL_MOUSEBUTTONDOWN:
+            if (event.button.button == SDL_BUTTON_LEFT)
+            {
+                // left mouse button is pressed check co-ordinates
+                mouseX = event.button.x,
+                mouseY = event.button.y;
+                mouseButtonPressed = true;
+            }
             break;
         case SDL_KEYDOWN:
             keyWasPressed = true;
@@ -107,12 +123,12 @@ void processInput(void)
             case SDLK_SPACE:
             case SDLK_k:
                 keyWasPressed = false;
-                if (!gameIsStarted && !collisionDetected && startTheGameNow)
+                if (!gameIsStarted && startTheGameNow)
                 {
                     startPlaying = SDL_GetTicks();
                     gameIsStarted = true;
                 }
-                else
+                else if (startTheGameNow)
                 {
                     if (gameIsPaused)
                     {
@@ -125,11 +141,51 @@ void processInput(void)
                         gameIsPaused = true;
                     }
                 }
+
                 if (collisionDetected && collisionSoundPlayed)
                     pressedKey = 'k'; // k and space both key will do the same thing
                 break;
             case SDLK_q:
                 gameIsRunning = false;
+                break;
+            case SDLK_p:
+                if (mainMenuActive && !goToGameScreen)
+                {
+                    goToGameScreen = true;
+                    modeSelectionActive = false;
+                    showScorecard = false;
+                    mainMenuActive = false;
+                }
+                break;
+            case SDLK_r:
+                if (mainMenuActive)
+                {
+                    if (!showScorecard)
+                        showScorecard = true;
+                    else
+                        showScorecard = false;
+                }
+                break;
+            case SDLK_m:
+                if (mainMenuActive)
+                {
+                    if (!modeSelectionActive)
+                        modeSelectionActive = true;
+                    else
+                        modeSelectionActive = false;
+                }
+                break;
+            case SDLK_e:
+                if (modeSelectionActive && mainMenuActive)
+                    gameMode = "Easy";
+                break;
+            case SDLK_h:
+                if (modeSelectionActive && mainMenuActive)
+                    gameMode = "Hard";
+                break;
+            case SDLK_i:
+                if (modeSelectionActive && mainMenuActive)
+                    gameMode = "Impossible";
                 break;
             default:
                 keyWasPressed = false;
@@ -229,23 +285,50 @@ private:
 class Background
 {
 public:
+    SDL_Rect leftFirstObstacle, leftSecondObstacle, leftThirdObstacle, leftFourthObstacle,
+        horizontalFirstObstacle, horizontalSecondObstacle, horizontalThirdObstacle, horizontalFourthObstacle;
     vector<string> backgroundMusic, fruitEatingSound, collisionSound;
     string pauseSound, resumeSound, bonusFruitSound,
         userName = "";
 
+    const int baseSpeed = 2;
     int fadeInChunck = 40,
-        fadeInMusic = 1000;
+        fadeInMusic = 1000,
+        obstacleMovingSpeed = baseSpeed,
+        prevSpeed = baseSpeed;
 
     Background()
     {
         gameIsRunning = initializeWindow();
         initializeBackground();
+        initializeObstacle();
+        while (userName.empty())
+            getUserName();
+        mainMenuActive = true;
     }
+    void simpleRenderer(SDL_Rect &rect, SDL_Texture &texture)
+    {
+        SDL_RenderCopy(renderer, &texture, NULL, &rect);
+    }
+
+    void renderObstacles();
+    void renderExtraObstacles();
     bool initializeWindow();
     void initializeBackground();
+    void initializeObstacle();
     void resetGame();
     void getUserName();
     void Render();
+
+private:
+    const int freeSpace = 11;
+    // isTop is for the two obstacle that start from bottom & isBottom is for the other two
+    bool isTop = false,
+         isBottom = false,
+         isLeft1 = false,
+         isLeft2 = false,
+         isLeft3 = false,
+         isLeft4 = false;
 };
 
 class Font
@@ -280,7 +363,7 @@ public:
         TTF_CloseFont(font);
     }
 
-    void renderAllTimeBestScores(Snake *, Background &);
+    void renderAllTimeBestScores(Background &);
 
     void blinkingEffect()
     {
@@ -298,9 +381,35 @@ public:
 class Collision
 {
 public:
-    bool detectCollision(void);
+    bool detectCollision(Background &);
     bool detectCollisionWithFruit(Snake *);
     bool detectCollisionWithBonusFruit();
+};
+
+class mainMenu
+{
+public:
+    SDL_Rect menuTextR, menuPlayR, menuScorecardR, menuDifficultyR, menuQuitR,
+        modeTextR, modeEasyR, modeHardR, modeImpossibleR;
+    SDL_Texture *textureMainMenu[totalMenuTexture];
+    mainMenu()
+    {
+        initializeMainMenu();
+    }
+    ~mainMenu()
+    {
+        for (int i = 0; i < totalMenuTexture; i++)
+            SDL_DestroyTexture(textureMainMenu[i]);
+    }
+    void Render(SDL_Rect &menuRect, SDL_Texture &texture)
+    {
+        SDL_RenderCopy(renderer, &texture, NULL, &menuRect);
+    }
+
+    void mouseMovement();
+    void initializeMainMenu();
+    void renderMenu();
+    void renderModeSelection();
 };
 
 void destroyBackground(Fruit *fruit, Snake *snake)
@@ -314,8 +423,6 @@ void destroyBackground(Fruit *fruit, Snake *snake)
         SDL_DestroyTexture(textureBoarder[i]);
     for (int i = 0; i < totalFruitTexture; i++)
         SDL_DestroyTexture(textureFruit[i]);
-    for (int i = 0; i < totalMenuTexture; i++)
-        SDL_DestroyTexture(textureMenu[i]);
     SDL_DestroyTexture(textureSnakeSkin);
 
     SDL_DestroyRenderer(renderer);
@@ -324,11 +431,25 @@ void destroyBackground(Fruit *fruit, Snake *snake)
 }
 
 void Update(Snake *snake, Collision &collision, Background &background, Music &music, Fruit *fruit,
-            Font &font)
+            Font &font, mainMenu &menu)
 {
     SDL_RenderClear(renderer);
-
     background.Render();
+
+    // check all the menu activities here
+    if (mainMenuActive)
+    {
+        menu.renderMenu();
+        if (mouseButtonPressed)
+        {
+            menu.mouseMovement();
+            mouseButtonPressed = false;
+        }
+        if (showScorecard)
+            font.renderAllTimeBestScores(background);
+        if (modeSelectionActive)
+            menu.renderModeSelection();
+    }
     // check whether the snake eat the fruit or not
     if (collision.detectCollisionWithFruit(snake))
     {
@@ -342,6 +463,13 @@ void Update(Snake *snake, Collision &collision, Background &background, Music &m
             startTime = SDL_GetTicks();
             fruit->initializeBonusFruit();
             fruit->bonusFruitTimerFlag = true;
+        }
+
+        // increase obstacle moving speed if in impossible mode
+        if (gameMode != "Easy")
+        {
+            if (background.obstacleMovingSpeed < 10 && totalScore % 2 == 0)
+                background.obstacleMovingSpeed++;
         }
     }
     if (fruit->bonusFruitTimerFlag)
@@ -372,9 +500,9 @@ void Update(Snake *snake, Collision &collision, Background &background, Music &m
         snake->Render(snakeBody[i], *textureSnakeSkin);
 
     // detect collision
-    if (collision.detectCollision())
+    if (collision.detectCollision(background))
     {
-        font.renderAllTimeBestScores(snake, background);
+        font.renderAllTimeBestScores(background);
 
         // render game over screen
         SDL_Rect gameOverRect = {middleScreenTextRect.x, middleScreenTextRect.y, middleScreenTextRect.w, 80};
@@ -393,10 +521,30 @@ void Update(Snake *snake, Collision &collision, Background &background, Music &m
         }
     }
 
+    // start the game from here
     if (gameIsStarted)
     {
+        // check what mode to run the game on
+        if (gameMode == "Hard")
+        {
+            background.renderObstacles();
+            absoluteSnakeVelocity = true;
+        }
+        else if (gameMode == "Impossible")
+        {
+            background.renderObstacles();
+            background.renderExtraObstacles();
+            absoluteSnakeVelocity = false;
+        }
+        else
+            absoluteSnakeVelocity = false;
         if (gameIsPaused)
         {
+            if (background.obstacleMovingSpeed)
+            {
+                background.prevSpeed = background.obstacleMovingSpeed;
+                background.obstacleMovingSpeed = 0;
+            }
             // render pause screen
             font.Render(font.standardFont, 30, "Press Space To Resume", {255, 255, 255, font.textOpacity}, middleScreenTextRect);
 
@@ -409,6 +557,9 @@ void Update(Snake *snake, Collision &collision, Background &background, Music &m
         }
         else
         {
+            if (!background.obstacleMovingSpeed)
+                background.obstacleMovingSpeed = background.prevSpeed;
+            // normal gameplay functionalities
             if (keyWasPressed)
             {
                 snake->updateSnakeDirection(pressedKey);
@@ -426,26 +577,20 @@ void Update(Snake *snake, Collision &collision, Background &background, Music &m
         }
 
         // increase snake speed up to 15;
-        if ((totalScore / snake->incraseSpeedAfter) > prevResult && snakeVelocity < 15)
+        if (!absoluteSnakeVelocity && (totalScore / snake->incraseSpeedAfter) > prevResult &&
+            snakeVelocity < 15)
         {
             snakeVelocity++;
             SDL_Log("New Snake Speed: %d->%d", snakeVelocity - 1, snakeVelocity);
             prevResult = (totalScore / snake->incraseSpeedAfter);
         }
     }
-    else if (!collisionDetected)
+    else if (goToGameScreen && !collisionDetected)
     {
-        // do these operations before starting the game
-        while (background.userName.empty())
-            background.getUserName();
+        // render start screen
+        font.Render(font.standardFont, 30, "Press Space To Start", {255, 255, 255, font.textOpacity}, middleScreenTextRect);
 
-        if (!background.userName.empty())
-        {
-            // render start screen
-            font.Render(font.standardFont, 30, "Press Space To Start", {255, 255, 255, font.textOpacity}, middleScreenTextRect);
-
-            startTheGameNow = true;
-        }
+        startTheGameNow = true;
     }
 
     // vSync failed to activate so a 20 ms delay is the adjustment
@@ -463,6 +608,7 @@ int main(int argc, char **argv)
     Snake *snake = new Snake("./Snake/skin.bmp");
     Fruit *fruit = new Fruit();
     Music music;
+    mainMenu menu;
 
     while (gameIsRunning)
     {
@@ -478,13 +624,143 @@ int main(int argc, char **argv)
             snake = new Snake("./Snake/skin.bmp");
             fruit = new Fruit();
         }
-        Update(snake, collision, background, music, fruit, font);
+        Update(snake, collision, background, music, fruit, font, menu);
     }
 
     destroyBackground(fruit, snake);
 }
 
 // implimentation of all prototype functions
+void Font ::renderAllTimeBestScores(Background &background)
+{
+    // calculate all time best
+    // there are five all time best scores are saved
+    string highestVelocityFromFile;
+    int totalSavedScores = 15;
+    vector<pair<int, string>> allTimeBestScores;
+    ifstream in;
+    in.open("./Files/saveHighestScore.txt");
+    string getLineFromFile;
+    for (int i = 0; i < totalSavedScores; i++)
+    {
+        getline(in, getLineFromFile);
+        string getScoreFromLine = "",
+               getNameFromLine = "";
+        bool startTakingScore = false;
+        for (int i = 0; i < getLineFromFile.size(); i++)
+        {
+            if (startTakingScore)
+                getScoreFromLine.push_back(getLineFromFile[i]);
+            else
+            {
+                if (getLineFromFile[i] == ':')
+                    startTakingScore = true;
+                getNameFromLine.push_back(getLineFromFile[i]);
+            }
+        }
+
+        allTimeBestScores.push_back({stoi(getScoreFromLine), getNameFromLine});
+    }
+    sort(allTimeBestScores.begin(), allTimeBestScores.end());
+    in.close();
+
+    SDL_Color newScore = {255, 10, 10, SDL_ALPHA_OPAQUE},
+              prevScore = {0, 255, 0, SDL_ALPHA_OPAQUE};
+    if (totalScore > allTimeBestScores[0].first && !newHighScore)
+    {
+        newHighScore = true;
+        allTimeBestScores[0].first = totalScore;
+        allTimeBestScores[0].second = background.userName + ':';
+        sort(allTimeBestScores.begin(), allTimeBestScores.end());
+    }
+
+    // render highest score
+    string highestScore = "All Time Best Score: " + to_string(allTimeBestScores[totalSavedScores - 1].first);
+    Render(standardFont, 36, highestScore, ((newHighScore) ? newScore : prevScore), screenTopTextRect);
+
+    // write to the score file
+    ofstream out;
+    out.open("./Files/saveHighestScore.txt");
+    for (int i = totalSavedScores - 1; i >= 0; i--)
+        out << allTimeBestScores[i].second << allTimeBestScores[i].first << endl;
+    out.close();
+
+    // show some best scores
+    SDL_Rect bestScoresRect = {screenBottomBoxRectangle.x, screenBottomBoxRectangle.y, screenBottomBoxRectangle.w, 50};
+    Render("Fonts/robotoMonoRegular.ttf", 24, "All Time Best Scores", {255, 0, 255, 255}, bestScoresRect);
+    reverse(allTimeBestScores.begin(), allTimeBestScores.end());
+    SDL_Color scoreColor = {0, 255, 255, 255};
+    bestScoresRect.y += bestScoresRect.h;
+    bestScoresRect.h = 30;
+    for (auto &bestScore : allTimeBestScores)
+    {
+        Render("Fonts/robotoMonoRegular.ttf", 22, bestScore.second + ' ' + to_string(bestScore.first), scoreColor, bestScoresRect);
+        scoreColor.r += 17;
+        scoreColor.g -= 17;
+        bestScoresRect.y += bestScoresRect.h;
+    }
+
+    // work with total survival time in seconds file here
+    int totalSavedSurvivalTime = 10;
+    vector<pair<int, string>> mostSurvivedInSeconds;
+    ifstream inTimeSpent;
+    inTimeSpent.open("./Files/secondsSurvived.txt");
+    for (int i = 0; i < totalSavedSurvivalTime; i++)
+    {
+        getline(inTimeSpent, getLineFromFile);
+        string getSecondsFromLine = "",
+               getNameFromLine = "";
+        bool startTakingSeconds = false;
+        for (int i = 0; i < getLineFromFile.size(); i++)
+        {
+            if (startTakingSeconds)
+                getSecondsFromLine.push_back(getLineFromFile[i]);
+            else
+            {
+                if (getLineFromFile[i] == ':')
+                    startTakingSeconds = true;
+                getNameFromLine.push_back(getLineFromFile[i]);
+            }
+        }
+
+        mostSurvivedInSeconds.push_back({stoi(getSecondsFromLine), getNameFromLine});
+    }
+    sort(mostSurvivedInSeconds.begin(), mostSurvivedInSeconds.end());
+    inTimeSpent.close();
+
+    if (!collisionDetected)
+        timePlayed = ((SDL_GetTicks() - startPlaying) - totalPausedTime) / 1000.0;
+    if (timePlayed > mostSurvivedInSeconds[0].first && !newMostSurvived)
+    {
+        newMostSurvived = true;
+        mostSurvivedInSeconds[0].first = timePlayed;
+        mostSurvivedInSeconds[0].second = background.userName + ':';
+        sort(mostSurvivedInSeconds.begin(), mostSurvivedInSeconds.end());
+    }
+
+    // write to the luckiest file
+    ofstream outTimeSpent;
+    outTimeSpent.open("./Files/secondsSurvived.txt");
+    for (int i = totalSavedSurvivalTime - 1; i >= 0; i--)
+        outTimeSpent << mostSurvivedInSeconds[i].second << mostSurvivedInSeconds[i].first << endl;
+    outTimeSpent.close();
+
+    // show some best survival records in seconds
+    SDL_Rect mostTimeSpentRect = {screenBottomLeftBox.x, screenBottomLeftBox.y, screenBottomLeftBox.w, 80};
+    Render("Fonts/robotoMonoRegular.ttf", 26, "All Time Best Survival Records In Seconds", {255, 0, 255, 255}, mostTimeSpentRect);
+    reverse(mostSurvivedInSeconds.begin(), mostSurvivedInSeconds.end());
+    SDL_Color timeColor = {0, 255, 255, 255};
+    mostTimeSpentRect.y += mostTimeSpentRect.h;
+    mostTimeSpentRect.h = 35;
+    for (auto &mostSpent : mostSurvivedInSeconds)
+    {
+        Render("Fonts/robotoMonoRegular.ttf", 24, mostSpent.second + ' ' + to_string(mostSpent.first), timeColor, mostTimeSpentRect);
+        timeColor.r += 25;
+        timeColor.b -= 25;
+        mostTimeSpentRect.y += mostTimeSpentRect.h;
+    }
+}
+
 bool Background ::initializeWindow(void)
 {
     if (SDL_Init(SDL_INIT_VIDEO) < 0)
@@ -556,24 +832,24 @@ void Background ::initializeBackground(void)
 
     // initialize boarder
     boarderTopRect.x = 0;
-    boarderTopRect.y = 0;
+    boarderTopRect.y = -1;
     boarderTopRect.w = SCREEN_WIDTH - scoreTextRect.w;
     boarderTopRect.h = boarderHeight;
 
     boarderBottomRect.w = SCREEN_WIDTH;
     boarderBottomRect.h = boarderHeight;
     boarderBottomRect.x = 0;
-    boarderBottomRect.y = SCREEN_HEIGHT - boarderBottomRect.h;
+    boarderBottomRect.y = SCREEN_HEIGHT - boarderBottomRect.h + 1;
 
-    boarderLeftRect.x = 0;
-    boarderLeftRect.y = boarderHeight;
+    boarderLeftRect.x = -1;
+    boarderLeftRect.y = boarderHeight - 1;
     boarderLeftRect.w = boarderWidth;
     boarderLeftRect.h = SCREEN_HEIGHT - (2 * boarderLeftRect.y);
 
     boarderRightRect.w = boarderWidth;
-    boarderRightRect.x = SCREEN_WIDTH - boarderRightRect.w;
+    boarderRightRect.x = SCREEN_WIDTH - boarderRightRect.w + 1;
     boarderRightRect.y = scoreTextRect.h;
-    boarderRightRect.h = SCREEN_HEIGHT - boarderRightRect.y - boarderHeight;
+    boarderRightRect.h = SCREEN_HEIGHT - scoreTextRect.h - boarderHeight + 1;
 
     textureBoarder[0] = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP("./Background/boarder.bmp"));
 
@@ -590,7 +866,7 @@ void Background ::initializeBackground(void)
     screenTopTextRect.y = boarderHeight + 30;
 
     // initialize bottom screen box rectangle
-    screenBottomBoxRectangle.w = 240;
+    screenBottomBoxRectangle.w = SCREEN_WIDTH - (boarderWidth + screenTopTextRect.x + screenTopTextRect.w);
     screenBottomBoxRectangle.h = SCREEN_HEIGHT - boarderHeight - scoreTextRect.h;
     screenBottomBoxRectangle.x = (SCREEN_WIDTH - screenBottomBoxRectangle.w) - boarderWidth;
     screenBottomBoxRectangle.y = (SCREEN_HEIGHT - screenBottomBoxRectangle.h) - boarderHeight;
@@ -601,11 +877,37 @@ void Background ::initializeBackground(void)
     screenBottomLeftBox.x = boarderWidth;
     screenBottomLeftBox.y = screenTopTextRect.y + screenTopTextRect.h;
 
-    // initialize a rectangle for main menu
-    mainMenuRect.w = 250;
-    mainMenuRect.h = 300;
-    mainMenuRect.x = (SCREEN_WIDTH - mainMenuRect.w) / 2;
-    mainMenuRect.y = (SCREEN_HEIGHT - mainMenuRect.h) / 2;
+    // initialize whole obstacles
+    wholeObstacleOne.w = boarderWidth;
+    wholeObstacleOne.h = SCREEN_HEIGHT;
+    wholeObstacleOne.x = snakeWidth * freeSpace;
+    wholeObstacleOne.y = 0;
+
+    wholeObstacleTwo.w = boarderWidth;
+    wholeObstacleTwo.h = SCREEN_HEIGHT;
+    wholeObstacleTwo.x = wholeObstacleOne.x + wholeObstacleOne.w + snakeWidth * freeSpace;
+    wholeObstacleTwo.y = 0;
+
+    wholeObstacleThree.w = boarderWidth;
+    wholeObstacleThree.h = SCREEN_HEIGHT;
+    wholeObstacleThree.x = wholeObstacleTwo.x + wholeObstacleTwo.w + snakeWidth * freeSpace;
+    wholeObstacleThree.y = 0;
+
+    wholeObstacleFour.w = boarderWidth;
+    wholeObstacleFour.h = SCREEN_HEIGHT;
+    wholeObstacleFour.x = wholeObstacleThree.x + wholeObstacleThree.w + snakeWidth * freeSpace;
+    wholeObstacleFour.y = 0;
+
+    wholeObstacleFive.w = SCREEN_WIDTH;
+    wholeObstacleFive.h = boarderHeight;
+    wholeObstacleFive.x = 0;
+    wholeObstacleFive.y = (freeSpace * snakeHeight - wholeObstacleFive.h) / 2;
+
+    wholeObstacleSix.w = SCREEN_WIDTH;
+    wholeObstacleSix.h = boarderHeight;
+    wholeObstacleSix.x = 0;
+    wholeObstacleSix.y = (SCREEN_HEIGHT - boarderWidth) -
+                         (snakeHeight * freeSpace - wholeObstacleSix.h) / 2;
 
     // initialize fruit eating and background sounds
     for (int i = 0; i < totalBackgroundSound; i++)
@@ -619,9 +921,55 @@ void Background ::initializeBackground(void)
     bonusFruitSound = "./Sounds/eatBonusFruit.wav";
 }
 
+void Background::initializeObstacle()
+{
+    // intialize obstacles
+    leftFirstObstacle.w = boarderWidth;
+    leftFirstObstacle.h = boarderHeight;
+    leftFirstObstacle.x = snakeWidth * freeSpace;
+    leftFirstObstacle.y = boarderBottomRect.y - leftFirstObstacle.w;
+
+    leftSecondObstacle.w = boarderWidth;
+    leftSecondObstacle.h = boarderHeight;
+    leftSecondObstacle.x = leftFirstObstacle.x + leftFirstObstacle.w + snakeWidth * freeSpace;
+    leftSecondObstacle.y = boarderHeight - 1;
+
+    leftThirdObstacle.w = boarderWidth;
+    leftThirdObstacle.h = boarderHeight;
+    leftThirdObstacle.x = leftSecondObstacle.x + leftSecondObstacle.w + snakeWidth * freeSpace;
+    leftThirdObstacle.y = leftFirstObstacle.y;
+
+    leftFourthObstacle.w = boarderWidth;
+    leftFourthObstacle.h = boarderHeight;
+    leftFourthObstacle.x = leftThirdObstacle.x + leftSecondObstacle.w + snakeWidth * freeSpace;
+    leftFourthObstacle.y = leftSecondObstacle.y;
+
+    // initialize impossible mode obstacles
+    horizontalFirstObstacle.w = boarderWidth;
+    horizontalFirstObstacle.h = boarderHeight;
+    horizontalFirstObstacle.y = (freeSpace * snakeHeight - horizontalFirstObstacle.h) / 2;
+    horizontalFirstObstacle.x = leftFirstObstacle.x;
+
+    horizontalSecondObstacle.w = boarderWidth;
+    horizontalSecondObstacle.h = boarderHeight;
+    horizontalSecondObstacle.y = (SCREEN_HEIGHT - boarderWidth) -
+                                 (snakeHeight * freeSpace - horizontalSecondObstacle.h) / 2;
+    horizontalSecondObstacle.x = leftSecondObstacle.x;
+
+    horizontalThirdObstacle.w = boarderWidth;
+    horizontalThirdObstacle.h = boarderHeight;
+    horizontalThirdObstacle.y = horizontalFirstObstacle.y;
+    horizontalThirdObstacle.x = leftThirdObstacle.x;
+
+    horizontalFourthObstacle.w = boarderWidth;
+    horizontalFourthObstacle.h = boarderHeight;
+    horizontalFourthObstacle.y = horizontalSecondObstacle.y;
+    horizontalFourthObstacle.x = leftFourthObstacle.x;
+}
+
 void Background ::resetGame()
 {
-    gameIsStarted = true;
+    gameIsStarted = false;
     collisionDetected = false;
     keyWasPressed = false;
     gameIsPaused = false;
@@ -630,14 +978,25 @@ void Background ::resetGame()
     pauseScreenSoundPlayed = false;
     newHighScore = false;
     newMostSurvived = false;
+    mouseButtonPressed = false;
+    showScorecard = false;
+    modeSelectionActive = false;
+    absoluteSnakeVelocity = false;
     totalPausedTime = 0.0;
     timePlayed = 0.0;
     totalScore = 0;
     prevResult = 0;
+    mainMenuActive = true;
+    goToGameScreen = false;
+    startTheGameNow = false;
     snakeVelocity = snakeInitialVelocity;
     snakeBody.clear();
     snakeCurrentDirection = 'r';
-    pressedKey = '/'; // default value;
+    pressedKey = '/';  // default value;
+    gameMode = "Easy"; // default game mode
+
+    initializeObstacle();
+    obstacleMovingSpeed = baseSpeed;
 }
 
 void Background ::getUserName(void)
@@ -651,86 +1010,6 @@ void Background ::getUserName(void)
             break;
         userName.push_back(userInput[i]);
     }
-}
-
-Fruit ::Fruit()
-{
-    // create texture for all available fruits
-    textureFruit[0] = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP("./Fruits/apple.bmp"));
-    textureFruit[1] = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP("./Fruits/grapes.bmp"));
-    textureFruit[2] = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP("./Fruits/cherry.bmp"));
-    textureFruit[3] = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP("./Fruits/banana.bmp"));
-    textureFruit[4] = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP("./Fruits/pear.bmp"));
-    textureFruit[5] = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP("./Fruits/bonusFruit.bmp"));
-
-    // find the co-ordinate of the fruit
-    fruitControl.w = fruitWidth;
-    fruitControl.h = fruitHeight;
-    fruitControl.x = rand() % SCREEN_WIDTH;
-    fruitControl.y = rand() % SCREEN_HEIGHT;
-    // avoid snake body & other obstacles
-    while (SDL_HasIntersection(&fruitControl, &snakeBody[0]) ||
-           SDL_HasIntersection(&fruitControl, &scoreTextRect) ||
-           SDL_HasIntersection(&fruitControl, &boarderTopRect) ||
-           SDL_HasIntersection(&fruitControl, &boarderBottomRect) ||
-           SDL_HasIntersection(&fruitControl, &boarderLeftRect) ||
-           SDL_HasIntersection(&fruitControl, &boarderRightRect))
-    {
-        fruitControl.x = rand() % SCREEN_WIDTH;
-        fruitControl.y = rand() % SCREEN_HEIGHT;
-    }
-
-    // intialize bonus fruit
-    bonusFruitControl.w = fruitWidth;
-    bonusFruitControl.h = fruitHeight;
-
-    // pick A random fruit;
-    pickFruit = rand() % (totalFruitTexture - 1);
-}
-
-void Fruit ::initializeBonusFruit()
-{
-    // avoid snake body & regular fruit
-    bool fruitInsideSnake = true;
-    while (fruitInsideSnake)
-    {
-        bonusFruitControl.x = boarderWidth + (rand() % (SCREEN_WIDTH - fruitWidth - 2 * boarderWidth));
-        bonusFruitControl.y = boarderHeight + (rand() % (SCREEN_HEIGHT - fruitHeight - 2 * boarderHeight));
-
-        // avoid regular fruit & score showing rectangle
-        if (SDL_HasIntersection(&bonusFruitControl, &fruitControl) ||
-            SDL_HasIntersection(&bonusFruitControl, &scoreTextRect))
-            continue;
-        // avoid snake body
-        for (int i = 0; i < snakeBody.size(); i++)
-        {
-            if (SDL_HasIntersection(&snakeBody[i], &bonusFruitControl))
-            {
-                fruitInsideSnake = true;
-                break;
-            }
-            else
-                fruitInsideSnake = false;
-        }
-    }
-}
-
-Snake ::Snake(string filePath)
-{
-    initialSnake.w = snakeWidth;
-    initialSnake.h = snakeHeight;
-    initialSnake.x = boarderWidth + 1;
-    initialSnake.y = (SCREEN_HEIGHT - initialSnake.h) / 2;
-
-    textureSnakeSkin = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP(filePath.c_str()));
-
-    snakeBody.push_back(initialSnake);
-
-    // speed increase after a certain score
-    // use the current system time ass seed to generate pseudo-random values;
-    srand((unsigned)time(0));
-    incraseSpeedAfter = 10 + rand() % 11;
-    SDL_Log("Increase Snake Speed After: %d", incraseSpeedAfter);
 }
 
 void Background ::Render(void)
@@ -769,179 +1048,210 @@ void Background ::Render(void)
     SDL_SetTextureBlendMode(textureBoarder[0], SDL_BLENDMODE_ADD);
 }
 
-bool Collision ::detectCollisionWithFruit(Snake *snake)
+void Background ::renderExtraObstacles()
 {
-    if (SDL_HasIntersection(&fruitControl, &snakeBody[0]))
-    {
-        snake->updateSnakeSize();
-        // spawn new fruit. i.e., pick a random fruit & also avoid snake body
-        pickFruit = rand() % (totalFruitTexture - 1);
-        // avoid snake body & bonus fruit
-        bool fruitInsideSnake = true;
-        while (fruitInsideSnake)
-        {
-            fruitControl.x = boarderWidth + (rand() % (SCREEN_WIDTH - fruitWidth - 2 * boarderWidth));
-            fruitControl.y = boarderHeight + (rand() % (SCREEN_HEIGHT - fruitHeight - 2 * boarderHeight));
+    simpleRenderer(horizontalFirstObstacle, *textureBoarder[0]);
+    simpleRenderer(horizontalSecondObstacle, *textureBoarder[0]);
+    simpleRenderer(horizontalThirdObstacle, *textureBoarder[0]);
+    simpleRenderer(horizontalFourthObstacle, *textureBoarder[0]);
 
-            // avoid bonus fruit & score showing rectangle
-            if (SDL_HasIntersection(&bonusFruitControl, &fruitControl) ||
-                SDL_HasIntersection(&fruitControl, &scoreTextRect))
+    // move Obstacles
+    // move first obstacle
+    if (isLeft1)
+        horizontalFirstObstacle.x += obstacleMovingSpeed;
+    else
+        horizontalFirstObstacle.x -= obstacleMovingSpeed;
+    if (horizontalFirstObstacle.x <= (boarderWidth + (freeSpace / 2) * snakeHeight))
+        isLeft1 = true;
+    else if (horizontalFirstObstacle.x >= leftFirstObstacle.x + (freeSpace / 2) * snakeHeight)
+        isLeft1 = false;
+
+    // move third obstacle
+    if (isLeft2)
+        horizontalThirdObstacle.x += obstacleMovingSpeed;
+    else
+        horizontalThirdObstacle.x -= obstacleMovingSpeed;
+    if (horizontalThirdObstacle.x <= leftThirdObstacle.x - ((freeSpace / 2) * snakeHeight))
+        isLeft2 = true;
+    else if (horizontalThirdObstacle.x >= leftThirdObstacle.x + (freeSpace / 2) * snakeHeight)
+        isLeft2 = false;
+
+    // move second obstacle
+    if (isLeft3)
+        horizontalSecondObstacle.x += obstacleMovingSpeed;
+    else
+        horizontalSecondObstacle.x -= obstacleMovingSpeed;
+    if (horizontalSecondObstacle.x <= leftSecondObstacle.x - ((freeSpace / 2) * snakeHeight))
+        isLeft3 = true;
+    else if (horizontalSecondObstacle.x >= leftSecondObstacle.x + (freeSpace / 2) * snakeHeight)
+        isLeft3 = false;
+
+    // move fourth obstacle
+    if (isLeft4)
+        horizontalFourthObstacle.x += obstacleMovingSpeed;
+    else
+        horizontalFourthObstacle.x -= obstacleMovingSpeed;
+    if (horizontalFourthObstacle.x <= leftFourthObstacle.x - ((freeSpace / 2) * snakeHeight))
+        isLeft4 = true;
+    else if (horizontalFourthObstacle.x >= leftFourthObstacle.x + (freeSpace / 2) * snakeHeight)
+        isLeft4 = false;
+}
+
+void Background ::renderObstacles()
+{
+    // render obstacle
+    simpleRenderer(leftFirstObstacle, *textureBoarder[0]);
+    simpleRenderer(leftSecondObstacle, *textureBoarder[0]);
+    simpleRenderer(leftThirdObstacle, *textureBoarder[0]);
+    simpleRenderer(leftFourthObstacle, *textureBoarder[0]);
+
+    // move obstacle
+    // move first & third obstacle
+    if (leftFirstObstacle.y >= (boarderBottomRect.y - leftFirstObstacle.w))
+        isTop = false;
+    else if (leftFirstObstacle.y <= boarderHeight + (snakeHeight * freeSpace))
+        isTop = true;
+    if (isTop)
+    {
+        leftFirstObstacle.y += obstacleMovingSpeed;
+        leftThirdObstacle.y += obstacleMovingSpeed;
+    }
+    else
+    {
+        leftFirstObstacle.y -= obstacleMovingSpeed;
+        leftThirdObstacle.y -= obstacleMovingSpeed;
+    }
+
+    // move second and fourth obstacle
+    if (leftSecondObstacle.y <= (boarderHeight - 1))
+        isBottom = false;
+    else if (leftSecondObstacle.y >= (SCREEN_HEIGHT - boarderHeight - (snakeHeight * freeSpace)))
+        isBottom = true;
+    if (isBottom)
+    {
+        leftSecondObstacle.y -= obstacleMovingSpeed;
+        leftFourthObstacle.y -= obstacleMovingSpeed;
+    }
+    else
+    {
+        leftSecondObstacle.y += obstacleMovingSpeed;
+        leftFourthObstacle.y += obstacleMovingSpeed;
+    }
+}
+
+Fruit ::Fruit()
+{
+    // create texture for all available fruits
+    textureFruit[0] = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP("./Fruits/apple.bmp"));
+    textureFruit[1] = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP("./Fruits/grapes.bmp"));
+    textureFruit[2] = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP("./Fruits/cherry.bmp"));
+    textureFruit[3] = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP("./Fruits/banana.bmp"));
+    textureFruit[4] = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP("./Fruits/pear.bmp"));
+    textureFruit[5] = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP("./Fruits/bonusFruit.bmp"));
+
+    // find the co-ordinate of the fruit
+    fruitControl.w = fruitWidth;
+    fruitControl.h = fruitHeight;
+    fruitControl.x = rand() % SCREEN_WIDTH;
+    fruitControl.y = rand() % SCREEN_HEIGHT;
+    // avoid snake body & other obstacles
+
+    while (true)
+    {
+        while (SDL_HasIntersection(&fruitControl, &snakeBody[0]) ||
+               SDL_HasIntersection(&fruitControl, &scoreTextRect) ||
+               SDL_HasIntersection(&fruitControl, &boarderTopRect) ||
+               SDL_HasIntersection(&fruitControl, &boarderBottomRect) ||
+               SDL_HasIntersection(&fruitControl, &boarderLeftRect) ||
+               SDL_HasIntersection(&fruitControl, &boarderRightRect))
+        {
+            fruitControl.x = rand() % SCREEN_WIDTH;
+            fruitControl.y = rand() % SCREEN_HEIGHT;
+        }
+
+        if (gameMode != "Easy")
+        {
+            if (SDL_HasIntersection(&fruitControl, &wholeObstacleOne) ||
+                SDL_HasIntersection(&fruitControl, &wholeObstacleTwo) ||
+                SDL_HasIntersection(&fruitControl, &wholeObstacleThree) ||
+                SDL_HasIntersection(&fruitControl, &wholeObstacleFour))
                 continue;
-            // avoid snake body
-            for (int i = 0; i < snakeBody.size(); i++)
+            if (gameMode == "Impossible")
             {
-                if (SDL_HasIntersection(&snakeBody[i], &fruitControl))
-                {
-                    fruitInsideSnake = true;
-                    break;
-                }
-                else
-                    fruitInsideSnake = false;
+                if (SDL_HasIntersection(&fruitControl, &wholeObstacleFive) ||
+                    SDL_HasIntersection(&fruitControl, &wholeObstacleSix))
+                    continue;
             }
         }
-        return true;
+        break;
     }
-    return false;
+
+    // intialize bonus fruit
+    bonusFruitControl.w = fruitWidth;
+    bonusFruitControl.h = fruitHeight;
+
+    // pick A random fruit;
+    pickFruit = rand() % (totalFruitTexture - 1);
 }
 
-bool Collision::detectCollisionWithBonusFruit()
+void Fruit ::initializeBonusFruit()
 {
-    if (SDL_HasIntersection(&snakeBody[0], &bonusFruitControl))
-        return true;
-    return false;
+    // avoid snake body & regular fruit
+    bool fruitInsideSnake = true;
+    while (fruitInsideSnake)
+    {
+        bonusFruitControl.x = boarderWidth + (rand() % (SCREEN_WIDTH - fruitWidth - 2 * boarderWidth));
+        bonusFruitControl.y = boarderHeight + (rand() % (SCREEN_HEIGHT - fruitHeight - 2 * boarderHeight));
+
+        // avoid regular fruit & score showing rectangle
+        if (SDL_HasIntersection(&bonusFruitControl, &fruitControl) ||
+            SDL_HasIntersection(&bonusFruitControl, &scoreTextRect))
+            continue;
+        // avoid obstacle if exists
+        if (gameMode != "Easy")
+        {
+            if (SDL_HasIntersection(&fruitControl, &wholeObstacleOne) ||
+                SDL_HasIntersection(&fruitControl, &wholeObstacleTwo) ||
+                SDL_HasIntersection(&fruitControl, &wholeObstacleThree) ||
+                SDL_HasIntersection(&fruitControl, &wholeObstacleFour))
+                continue;
+            if (gameMode == "Impossible")
+            {
+                if (SDL_HasIntersection(&fruitControl, &wholeObstacleFive) ||
+                    SDL_HasIntersection(&fruitControl, &wholeObstacleSix))
+                    continue;
+            }
+        }
+        // avoid snake body
+        for (int i = 0; i < snakeBody.size(); i++)
+        {
+            if (SDL_HasIntersection(&snakeBody[i], &bonusFruitControl))
+            {
+                fruitInsideSnake = true;
+                break;
+            }
+            else
+                fruitInsideSnake = false;
+        }
+    }
 }
 
-void Font ::renderAllTimeBestScores(Snake *snake, Background &background)
+Snake ::Snake(string filePath)
 {
-    // calculate all time best
-    // there are five all time best scores are saved
-    string highestVelocityFromFile;
-    int totalSavedScores = 15;
-    vector<pair<int, string>> allTimeBestScores;
-    ifstream in;
-    in.open("./Files/saveHighestScore.txt");
-    string getLineFromFile;
-    for (int i = 0; i < totalSavedScores; i++)
-    {
-        getline(in, getLineFromFile);
-        string getScoreFromLine = "",
-               getNameFromLine = "";
-        bool startTakingScore = false;
-        for (int i = 0; i < getLineFromFile.size(); i++)
-        {
-            if (startTakingScore)
-                getScoreFromLine.push_back(getLineFromFile[i]);
-            else
-            {
-                if (getLineFromFile[i] == ':')
-                    startTakingScore = true;
-                getNameFromLine.push_back(getLineFromFile[i]);
-            }
-        }
+    initialSnake.w = snakeWidth;
+    initialSnake.h = snakeHeight;
+    initialSnake.x = boarderWidth + 1;
+    initialSnake.y = (SCREEN_HEIGHT - initialSnake.h) / 2;
 
-        allTimeBestScores.push_back({stoi(getScoreFromLine), getNameFromLine});
-    }
-    sort(allTimeBestScores.begin(), allTimeBestScores.end());
-    in.close();
+    textureSnakeSkin = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP(filePath.c_str()));
 
-    SDL_Color newScore = {255, 10, 10, SDL_ALPHA_OPAQUE},
-              prevScore = {0, 255, 0, SDL_ALPHA_OPAQUE};
-    if (totalScore > allTimeBestScores[0].first && !newHighScore)
-    {
-        newHighScore = true;
-        allTimeBestScores[0].first = totalScore;
-        allTimeBestScores[0].second = background.userName + ':';
-        sort(allTimeBestScores.begin(), allTimeBestScores.end());
-    }
+    snakeBody.push_back(initialSnake);
 
-    // render highest score
-    string highestScore = "All Time Best Score: " + to_string(allTimeBestScores[totalSavedScores - 1].first);
-    Render(standardFont, 36, highestScore, ((newHighScore) ? newScore : prevScore), screenTopTextRect);
-
-    // write to the score file
-    ofstream out;
-    out.open("./Files/saveHighestScore.txt");
-    for (int i = totalSavedScores - 1; i >= 0; i--)
-        out << allTimeBestScores[i].second << allTimeBestScores[i].first << endl;
-    out.close();
-
-    // show some best scores
-    SDL_Rect bestScoresRect = {screenBottomBoxRectangle.x, screenBottomBoxRectangle.y, screenBottomBoxRectangle.w, 28};
-    Render("Fonts/robotoMonoRegular.ttf", 20, "All Time Best Scores", {255, 0, 255, 255}, bestScoresRect);
-    reverse(allTimeBestScores.begin(), allTimeBestScores.end());
-    SDL_Color scoreColor = {0, 255, 255, 255};
-    for (auto &bestScore : allTimeBestScores)
-    {
-        bestScoresRect.y += bestScoresRect.h;
-        Render("Fonts/robotoMonoRegular.ttf", 18, bestScore.second + ' ' + to_string(bestScore.first), scoreColor, bestScoresRect);
-        scoreColor.r += 17;
-        scoreColor.g -= 17;
-    }
-
-    // work with total survival time in seconds file here
-    int totalSavedSurvivalTime = 10;
-    vector<pair<int, string>> mostSurvivedInSeconds;
-    ifstream inTimeSpent;
-    inTimeSpent.open("./Files/secondsSurvived.txt");
-    for (int i = 0; i < totalSavedSurvivalTime; i++)
-    {
-        getline(inTimeSpent, getLineFromFile);
-        string getSecondsFromLine = "",
-               getNameFromLine = "";
-        bool startTakingSeconds = false;
-        for (int i = 0; i < getLineFromFile.size(); i++)
-        {
-            if (startTakingSeconds)
-                getSecondsFromLine.push_back(getLineFromFile[i]);
-            else
-            {
-                if (getLineFromFile[i] == ':')
-                    startTakingSeconds = true;
-                getNameFromLine.push_back(getLineFromFile[i]);
-            }
-        }
-
-        mostSurvivedInSeconds.push_back({stoi(getSecondsFromLine), getNameFromLine});
-    }
-    sort(mostSurvivedInSeconds.begin(), mostSurvivedInSeconds.end());
-    inTimeSpent.close();
-
-    if (!collisionDetected)
-        timePlayed = ((SDL_GetTicks() - startPlaying) - totalPausedTime) / 1000.0;
-    if (timePlayed > mostSurvivedInSeconds[0].first && !newMostSurvived)
-    {
-        newMostSurvived = true;
-        mostSurvivedInSeconds[0].first = timePlayed;
-        mostSurvivedInSeconds[0].second = background.userName + ':';
-        sort(mostSurvivedInSeconds.begin(), mostSurvivedInSeconds.end());
-    }
-
-    // write to the luckiest file
-    ofstream outTimeSpent;
-    outTimeSpent.open("./Files/secondsSurvived.txt");
-    for (int i = totalSavedSurvivalTime - 1; i >= 0; i--)
-        outTimeSpent << mostSurvivedInSeconds[i].second << mostSurvivedInSeconds[i].first << endl;
-    outTimeSpent.close();
-
-    // show some best survival records in seconds
-    SDL_Rect mostTimeSpentRect = {screenBottomLeftBox.x, screenBottomLeftBox.y, screenBottomLeftBox.w, 80};
-    Render("Fonts/robotoMonoRegular.ttf", 20, "All Time Best Survival Records In Seconds", {255, 0, 255, 255}, mostTimeSpentRect);
-    reverse(mostSurvivedInSeconds.begin(), mostSurvivedInSeconds.end());
-    SDL_Color timeColor = {0, 255, 255, 255};
-    mostTimeSpentRect.y += mostTimeSpentRect.h;
-    mostTimeSpentRect.h = 30;
-    for (auto &mostSpent : mostSurvivedInSeconds)
-    {
-        Render("Fonts/robotoMonoRegular.ttf", 18, mostSpent.second + ' ' + to_string(mostSpent.first), timeColor, mostTimeSpentRect);
-        timeColor.r += 25;
-        timeColor.b -= 25;
-        mostTimeSpentRect.y += mostTimeSpentRect.h;
-    }
-
-    // show some best intervals
-    // SDL_RenderCopy(renderer,
-    //                draw.drawText("Fonts/robotoMonoRegular.ttf", ("\tAll Time Best\n\tIntervals\n\n\t" + allTimeBestIntervals[totalSavedIntervals - 1].second + ' ' + to_string(allTimeBestIntervals[totalSavedIntervals - 1].first) + "\n\t" + allTimeBestIntervals[totalSavedIntervals - 2].second + ' ' + to_string(allTimeBestIntervals[totalSavedIntervals - 2].first) + "\n\t" + allTimeBestIntervals[totalSavedIntervals - 3].second + ' ' + to_string(allTimeBestIntervals[totalSavedIntervals - 3].first) + "\n\t" + allTimeBestIntervals[totalSavedIntervals - 4].second + ' ' + to_string(allTimeBestIntervals[totalSavedIntervals - 4].first) + "\n\t" + allTimeBestIntervals[totalSavedIntervals - 5].second + ' ' + to_string(allTimeBestIntervals[totalSavedIntervals - 5].first) + "\n\t" + allTimeBestIntervals[totalSavedIntervals - 6].second + ' ' + to_string(allTimeBestIntervals[totalSavedIntervals - 6].first) + "\n\t" + allTimeBestIntervals[totalSavedIntervals - 7].second + ' ' + to_string(allTimeBestIntervals[totalSavedIntervals - 7].first) + "\n\t" + allTimeBestIntervals[totalSavedIntervals - 8].second + ' ' + to_string(allTimeBestIntervals[totalSavedIntervals - 8].first) + "\n\t" + allTimeBestIntervals[totalSavedIntervals - 9].second + ' ' + to_string(allTimeBestIntervals[totalSavedIntervals - 9].first) + "\n\t" + allTimeBestIntervals[totalSavedIntervals - 10].second + ' ' + to_string(allTimeBestIntervals[totalSavedIntervals - 10].first)).c_str(), 26, {255, 0, 255, SDL_ALPHA_OPAQUE}),
-    //                NULL, &screenBottomLeftBox);
+    // speed increase after a certain score
+    // use the current system time ass seed to generate pseudo-random values;
+    srand((unsigned)time(0));
+    incraseSpeedAfter = 10 + rand() % 11;
+    SDL_Log("Increase Snake Speed After: %d", incraseSpeedAfter);
 }
 
 void Snake ::updateSnakePosition(int snakeVelocity)
@@ -1041,8 +1351,93 @@ void Snake ::updateSnakeDirection(char key)
     }
 }
 
-bool Collision::detectCollision(void)
+bool Collision ::detectCollisionWithFruit(Snake *snake)
 {
+    if (SDL_HasIntersection(&fruitControl, &snakeBody[0]))
+    {
+        snake->updateSnakeSize();
+        // spawn new fruit. i.e., pick a random fruit & also avoid snake body
+        pickFruit = rand() % (totalFruitTexture - 1);
+        // avoid snake body & bonus fruit
+        bool fruitInsideSnake = true;
+        while (fruitInsideSnake)
+        {
+            fruitControl.x = boarderWidth + (rand() % (SCREEN_WIDTH - fruitWidth - 2 * boarderWidth));
+            fruitControl.y = boarderHeight + (rand() % (SCREEN_HEIGHT - fruitHeight - 2 * boarderHeight));
+
+            // avoid bonus fruit & score showing rectangle
+            if (SDL_HasIntersection(&bonusFruitControl, &fruitControl) ||
+                SDL_HasIntersection(&fruitControl, &scoreTextRect))
+                continue;
+            // avoid obstacle is exists
+            if (gameMode != "Easy")
+            {
+                if (SDL_HasIntersection(&fruitControl, &wholeObstacleOne) ||
+                    SDL_HasIntersection(&fruitControl, &wholeObstacleTwo) ||
+                    SDL_HasIntersection(&fruitControl, &wholeObstacleThree) ||
+                    SDL_HasIntersection(&fruitControl, &wholeObstacleFour))
+                    continue;
+                if (gameMode == "Impossible")
+                {
+                    if (SDL_HasIntersection(&fruitControl, &wholeObstacleFive) ||
+                        SDL_HasIntersection(&fruitControl, &wholeObstacleSix))
+                        continue;
+                }
+            }
+            // avoid snake body
+            for (int i = 0; i < snakeBody.size(); i++)
+            {
+                if (SDL_HasIntersection(&snakeBody[i], &fruitControl))
+                {
+                    fruitInsideSnake = true;
+                    break;
+                }
+                else
+                    fruitInsideSnake = false;
+            }
+        }
+        return true;
+    }
+    return false;
+}
+
+bool Collision::detectCollisionWithBonusFruit()
+{
+    if (SDL_HasIntersection(&snakeBody[0], &bonusFruitControl))
+        return true;
+    return false;
+}
+
+bool Collision::detectCollision(Background &background)
+{
+    // check collision with Obstacle
+    if (gameMode == "Impossible")
+    {
+        for (int i = 0; i < snakeBody.size(); i++)
+        {
+            if (SDL_HasIntersection(&snakeBody[i], &background.leftFirstObstacle) ||
+                SDL_HasIntersection(&snakeBody[i], &background.leftSecondObstacle) ||
+                SDL_HasIntersection(&snakeBody[i], &background.leftThirdObstacle) ||
+                SDL_HasIntersection(&snakeBody[i], &background.leftFourthObstacle) ||
+                SDL_HasIntersection(&snakeBody[i], &background.horizontalFirstObstacle) ||
+                SDL_HasIntersection(&snakeBody[i], &background.horizontalSecondObstacle) ||
+                SDL_HasIntersection(&snakeBody[i], &background.horizontalThirdObstacle) ||
+                SDL_HasIntersection(&snakeBody[i], &background.horizontalFourthObstacle))
+                return true;
+        }
+    }
+    else if (gameMode == "Hard")
+    {
+        for (int i = 0; i < snakeBody.size(); i++)
+        {
+            if (SDL_HasIntersection(&snakeBody[i], &background.leftFirstObstacle) ||
+                SDL_HasIntersection(&snakeBody[i], &background.leftSecondObstacle) ||
+                SDL_HasIntersection(&snakeBody[i], &background.leftThirdObstacle) ||
+                SDL_HasIntersection(&snakeBody[i], &background.leftFourthObstacle))
+                return true;
+        }
+    }
+
     // check collosion with boarder
     if (SDL_HasIntersection(&snakeBody[0], &boarderTopRect) ||
         SDL_HasIntersection(&snakeBody[0], &boarderBottomRect) ||
@@ -1086,4 +1481,124 @@ bool Collision::detectCollision(void)
     }
 
     return false;
+}
+
+void mainMenu::initializeMainMenu()
+{
+    int height = 60, width = 200, times = -1, space = 15;
+    menuTextR.h = 50;
+    menuTextR.w = width;
+    menuTextR.x = (SCREEN_WIDTH - menuTextR.w) / 2;
+    menuTextR.y = (SCREEN_HEIGHT - menuTextR.h) / 2 - (height + space) - (menuTextR.h + space);
+
+    menuPlayR.h = height;
+    menuPlayR.w = width;
+    menuPlayR.x = (SCREEN_WIDTH - menuPlayR.w) / 2;
+    menuPlayR.y = (SCREEN_HEIGHT - menuPlayR.h) / 2 + times++ * (menuPlayR.h + space);
+
+    menuDifficultyR.h = height;
+    menuDifficultyR.w = width;
+    menuDifficultyR.x = (SCREEN_WIDTH - menuDifficultyR.w) / 2;
+    menuDifficultyR.y = (SCREEN_HEIGHT - menuDifficultyR.h) / 2 +
+                        times++ * (menuDifficultyR.h + space);
+
+    menuScorecardR.h = height;
+    menuScorecardR.w = width;
+    menuScorecardR.x = (SCREEN_WIDTH - menuScorecardR.w) / 2;
+    menuScorecardR.y = (SCREEN_HEIGHT - menuScorecardR.h) / 2 +
+                       times++ * (menuScorecardR.h + space);
+
+    menuQuitR.h = height;
+    menuQuitR.w = width;
+    menuQuitR.x = (SCREEN_WIDTH - menuQuitR.w) / 2;
+    menuQuitR.y = (SCREEN_HEIGHT - menuQuitR.h) / 2 + times++ * (menuQuitR.h + space);
+
+    // initialize mode rectangle
+    int spaceBetween = 50;
+    modeTextR.h = 50;
+    modeTextR.w = width;
+    modeTextR.x = menuDifficultyR.x + menuDifficultyR.w + spaceBetween;
+    modeTextR.y = menuDifficultyR.y;
+
+    modeEasyR.h = height;
+    modeEasyR.w = width;
+    modeEasyR.x = modeTextR.x;
+    modeEasyR.y = modeTextR.y + modeTextR.h + space;
+
+    modeHardR.h = height;
+    modeHardR.w = width;
+    modeHardR.x = modeEasyR.x;
+    modeHardR.y = modeEasyR.y + modeEasyR.h + space;
+
+    modeImpossibleR.h = height;
+    modeImpossibleR.w = width;
+    modeImpossibleR.x = modeHardR.x;
+    modeImpossibleR.y = modeHardR.y + modeHardR.h + space;
+
+    // initialize texture
+    textureMainMenu[0] = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP("./Other/menuText.bmp"));
+    textureMainMenu[1] = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP("./Other/menuPlay.bmp"));
+    textureMainMenu[2] = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP("./Other/menuDifficulty.bmp"));
+    textureMainMenu[3] = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP("./Other/menuScorecard.bmp"));
+    textureMainMenu[4] = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP("./Other/menuQuit.bmp"));
+    textureMainMenu[5] = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP("./Other/modeText.bmp"));
+    textureMainMenu[6] = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP("./Other/modeEasy.bmp"));
+    textureMainMenu[7] = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP("./Other/modeHard.bmp"));
+    textureMainMenu[8] = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP("./Other/modeImpossible.bmp"));
+}
+
+void mainMenu ::mouseMovement()
+{
+    SDL_Rect mouseRect = {mouseX, mouseY, 1, 1};
+    if (SDL_HasIntersection(&mouseRect, &menuPlayR))
+    {
+        goToGameScreen = true;
+        modeSelectionActive = false;
+        showScorecard = false;
+        mainMenuActive = false;
+    }
+    else if (SDL_HasIntersection(&mouseRect, &menuScorecardR))
+    {
+        if (!showScorecard)
+            showScorecard = true;
+        else
+            showScorecard = false;
+    }
+    else if (SDL_HasIntersection(&mouseRect, &menuQuitR))
+        gameIsRunning = false;
+    else if (SDL_HasIntersection(&mouseRect, &menuDifficultyR))
+    {
+        if (!modeSelectionActive)
+            modeSelectionActive = true;
+        else
+            modeSelectionActive = false;
+    }
+
+    // check for modes
+    if (modeSelectionActive)
+    {
+        if (SDL_HasIntersection(&mouseRect, &modeEasyR))
+            gameMode = "Easy";
+        else if (SDL_HasIntersection(&mouseRect, &modeHardR))
+            gameMode = "Hard";
+        else if (SDL_HasIntersection(&mouseRect, &modeImpossibleR))
+            gameMode = "Impossible";
+    }
+}
+
+void mainMenu ::renderMenu()
+{
+    Render(menuTextR, *textureMainMenu[0]);
+    Render(menuPlayR, *textureMainMenu[1]);
+    Render(menuDifficultyR, *textureMainMenu[2]);
+    Render(menuScorecardR, *textureMainMenu[3]);
+    Render(menuQuitR, *textureMainMenu[4]);
+}
+
+void mainMenu::renderModeSelection()
+{
+    Render(modeTextR, *textureMainMenu[5]);
+    Render(modeEasyR, *textureMainMenu[6]);
+    Render(modeHardR, *textureMainMenu[7]);
+    Render(modeImpossibleR, *textureMainMenu[8]);
 }
