@@ -43,7 +43,7 @@ const int totalWaterTexture = 2,
           totalMenuTexture = 9,
           totalCollisionSound = 3,
           totalBackgroundSound = 3,
-          snakeInitialVelocity = 5,
+          snakeInitialVelocity = 6,
           snakeColorRed = 100,
           snakeColorGreen = 255,
           snakeColorBlue = 100,
@@ -70,7 +70,8 @@ double totalPausedTime = 0.0,
 
 char snakeCurrentDirection = 'r', // by default snake is facing the right side
     pressedKey;
-string gameMode = "Easy";
+string gameMode = "Easy",
+       menuButtonSound, modeButtonSound;
 
 vector<SDL_Rect> snakeBody;
 SDL_Rect rect1, rect2, rect3, rect4, boarderTopRect, boarderBottomRect, boarderLeftRect, boarderRightRect,
@@ -79,159 +80,6 @@ SDL_Texture *textureWater[totalWaterTexture],
     *textureBoarder[totalBoarderTexture],
     *textureFruit[totalFruitTexture],
     *textureSnakeSkin;
-
-void processInput(void)
-{
-    SDL_Event event;
-    while (SDL_PollEvent(&event))
-    {
-        switch (event.type)
-        {
-        case SDL_QUIT:
-            gameIsRunning = false;
-            break;
-        case SDL_MOUSEBUTTONDOWN:
-            if (event.button.button == SDL_BUTTON_LEFT)
-            {
-                // left mouse button is pressed check co-ordinates
-                mouseX = event.button.x,
-                mouseY = event.button.y;
-                mouseButtonPressed = true;
-            }
-            break;
-        case SDL_KEYDOWN:
-            keyWasPressed = true;
-
-            switch (event.key.keysym.sym)
-            {
-            case SDLK_UP:
-            case SDLK_w:
-                pressedKey = 'w';
-                break;
-            case SDLK_DOWN:
-            case SDLK_s:
-                pressedKey = 's';
-                break;
-            case SDLK_RIGHT:
-            case SDLK_d:
-                pressedKey = 'd';
-                break;
-            case SDLK_LEFT:
-            case SDLK_a:
-                pressedKey = 'a';
-                break;
-            case SDLK_SPACE:
-            case SDLK_k:
-                keyWasPressed = false;
-                if (!gameIsStarted && startTheGameNow)
-                {
-                    startPlaying = SDL_GetTicks();
-                    gameIsStarted = true;
-                }
-                else if (startTheGameNow)
-                {
-                    if (gameIsPaused)
-                    {
-                        gameIsPaused = false;
-                        totalPausedTime += (SDL_GetTicks() - startPause);
-                    }
-                    else
-                    {
-                        startPause = SDL_GetTicks();
-                        gameIsPaused = true;
-                    }
-                }
-
-                if (collisionDetected && collisionSoundPlayed)
-                    pressedKey = 'k'; // k and space both key will do the same thing
-                break;
-            case SDLK_q:
-                gameIsRunning = false;
-                break;
-            case SDLK_p:
-                if (mainMenuActive && !goToGameScreen)
-                {
-                    goToGameScreen = true;
-                    modeSelectionActive = false;
-                    showScorecard = false;
-                    mainMenuActive = false;
-                }
-                break;
-            case SDLK_r:
-                if (mainMenuActive)
-                {
-                    if (!showScorecard)
-                        showScorecard = true;
-                    else
-                        showScorecard = false;
-                }
-                break;
-            case SDLK_m:
-                if (mainMenuActive)
-                {
-                    if (!modeSelectionActive)
-                        modeSelectionActive = true;
-                    else
-                        modeSelectionActive = false;
-                }
-                break;
-            case SDLK_e:
-                if (modeSelectionActive && mainMenuActive)
-                    gameMode = "Easy";
-                break;
-            case SDLK_h:
-                if (modeSelectionActive && mainMenuActive)
-                    gameMode = "Hard";
-                break;
-            case SDLK_i:
-                if (modeSelectionActive && mainMenuActive)
-                    gameMode = "Impossible";
-                break;
-            default:
-                keyWasPressed = false;
-                break;
-            }
-            break;
-        default:
-            break;
-        }
-    }
-}
-
-class Snake
-{
-public:
-    int incraseSpeedAfter;
-    // intialize snake using constructor
-    Snake(string);
-    void updateSnakePosition(int);
-    void updateSnakeSize(void);
-    void updateSnakeDirection(char);
-    void Render(SDL_Rect &snakePart, SDL_Texture &snakeTexture)
-    {
-        SDL_RenderCopy(renderer, &snakeTexture, NULL, &snakePart);
-    }
-
-private:
-    SDL_Rect initialSnake;
-};
-
-class Fruit
-{
-public:
-    bool bonusFruitTimerFlag = false;
-    int bonusFruitIndex = 5; // index of bonus fruit
-    // initialize the fruit using constructor
-    Fruit();
-
-    void Render(SDL_Rect &fruitRect, SDL_Texture &fruitTexture)
-    {
-        SDL_RenderCopy(renderer, &fruitTexture, NULL, &fruitRect);
-    }
-
-    void renderScore();
-    void initializeBonusFruit();
-};
 
 class Music
 {
@@ -280,6 +128,173 @@ public:
 private:
     Mix_Music *music = nullptr;
     Mix_Chunk *chunk = nullptr;
+};
+
+void processInput(Music &music)
+{
+    SDL_Event event;
+    while (SDL_PollEvent(&event))
+    {
+        switch (event.type)
+        {
+        case SDL_QUIT:
+            gameIsRunning = false;
+            break;
+        case SDL_MOUSEBUTTONDOWN:
+            if (event.button.button == SDL_BUTTON_LEFT)
+            {
+                // left mouse button is pressed check co-ordinates
+                mouseX = event.button.x,
+                mouseY = event.button.y;
+                mouseButtonPressed = true;
+            }
+            break;
+        case SDL_KEYDOWN:
+            keyWasPressed = true;
+
+            switch (event.key.keysym.sym)
+            {
+            case SDLK_UP:
+            case SDLK_w:
+                pressedKey = 'w';
+                break;
+            case SDLK_DOWN:
+            case SDLK_s:
+                pressedKey = 's';
+                break;
+            case SDLK_RIGHT:
+            case SDLK_d:
+                pressedKey = 'd';
+                break;
+            case SDLK_LEFT:
+            case SDLK_a:
+                pressedKey = 'a';
+                break;
+            case SDLK_SPACE:
+            case SDLK_k:
+                keyWasPressed = false;
+                if (!gameIsStarted && startTheGameNow)
+                {
+                    music.playChuck(menuButtonSound, 3, 0, 10);
+                    startPlaying = SDL_GetTicks();
+                    gameIsStarted = true;
+                }
+                else if (startTheGameNow)
+                {
+                    if (gameIsPaused)
+                    {
+                        gameIsPaused = false;
+                        totalPausedTime += (SDL_GetTicks() - startPause);
+                    }
+                    else
+                    {
+                        startPause = SDL_GetTicks();
+                        gameIsPaused = true;
+                    }
+                }
+
+                if (collisionDetected && collisionSoundPlayed)
+                    pressedKey = 'k'; // k and space both key will do the same thing
+                break;
+            case SDLK_q:
+                music.playChuck(menuButtonSound, 3, 0, 10);
+                gameIsRunning = false;
+                break;
+            case SDLK_p:
+                if (mainMenuActive && !goToGameScreen)
+                {
+                    music.playChuck(menuButtonSound, 3, 0, 10);
+                    goToGameScreen = true;
+                    modeSelectionActive = false;
+                    showScorecard = false;
+                    mainMenuActive = false;
+                }
+                break;
+            case SDLK_r:
+                if (mainMenuActive)
+                {
+                    music.playChuck(menuButtonSound, 3, 0, 10);
+                    if (!showScorecard)
+                        showScorecard = true;
+                    else
+                        showScorecard = false;
+                }
+                break;
+            case SDLK_m:
+                if (mainMenuActive)
+                {
+                    music.playChuck(menuButtonSound, 3, 0, 10);
+                    if (!modeSelectionActive)
+                        modeSelectionActive = true;
+                    else
+                        modeSelectionActive = false;
+                }
+                break;
+            case SDLK_e:
+                if (modeSelectionActive && mainMenuActive)
+                {
+                    music.playChuck(modeButtonSound, 3, 0, 10);
+                    gameMode = "Easy";
+                }
+                break;
+            case SDLK_h:
+                if (modeSelectionActive && mainMenuActive)
+                {
+                    music.playChuck(modeButtonSound, 3, 0, 10);
+                    gameMode = "Hard";
+                }
+                break;
+            case SDLK_i:
+                if (modeSelectionActive && mainMenuActive)
+                {
+                    music.playChuck(modeButtonSound, 3, 0, 10);
+                    gameMode = "Impossible";
+                }
+                break;
+            default:
+                keyWasPressed = false;
+                break;
+            }
+            break;
+        default:
+            break;
+        }
+    }
+}
+
+class Snake
+{
+public:
+    int incraseSpeedAfter;
+    // intialize snake using constructor
+    Snake(string);
+    void updateSnakePosition(int);
+    void updateSnakeSize(void);
+    void updateSnakeDirection(char);
+    void Render(SDL_Rect &snakePart, SDL_Texture &snakeTexture)
+    {
+        SDL_RenderCopy(renderer, &snakeTexture, NULL, &snakePart);
+    }
+
+private:
+    SDL_Rect initialSnake;
+};
+
+class Fruit
+{
+public:
+    bool bonusFruitTimerFlag = false;
+    int bonusFruitIndex = 5; // index of bonus fruit
+    // initialize the fruit using constructor
+    Fruit();
+
+    void Render(SDL_Rect &fruitRect, SDL_Texture &fruitTexture)
+    {
+        SDL_RenderCopy(renderer, &fruitTexture, NULL, &fruitRect);
+    }
+
+    void renderScore();
+    void initializeBonusFruit();
 };
 
 class Background
@@ -406,7 +421,7 @@ public:
         SDL_RenderCopy(renderer, &texture, NULL, &menuRect);
     }
 
-    void mouseMovement();
+    void mouseMovement(Music &);
     void initializeMainMenu();
     void renderMenu();
     void renderModeSelection();
@@ -442,7 +457,7 @@ void Update(Snake *snake, Collision &collision, Background &background, Music &m
         menu.renderMenu();
         if (mouseButtonPressed)
         {
-            menu.mouseMovement();
+            menu.mouseMovement(music);
             mouseButtonPressed = false;
         }
         if (showScorecard)
@@ -612,7 +627,7 @@ int main(int argc, char **argv)
 
     while (gameIsRunning)
     {
-        processInput();
+        processInput(music);
         // reset the game
         if (collisionDetected && pressedKey == 'k')
         {
@@ -919,6 +934,9 @@ void Background ::initializeBackground(void)
     pauseSound = "./Sounds/pauseGame.wav";
     resumeSound = "./Sounds/resumeGame.wav";
     bonusFruitSound = "./Sounds/eatBonusFruit.wav";
+
+    menuButtonSound = "./Sounds/menuButtonClick.wav";
+    modeButtonSound = "./Sounds/modeButtonClick.wav";
 }
 
 void Background::initializeObstacle()
@@ -1547,11 +1565,12 @@ void mainMenu::initializeMainMenu()
     textureMainMenu[8] = SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP("./Other/modeImpossible.bmp"));
 }
 
-void mainMenu ::mouseMovement()
+void mainMenu ::mouseMovement(Music &music)
 {
     SDL_Rect mouseRect = {mouseX, mouseY, 1, 1};
     if (SDL_HasIntersection(&mouseRect, &menuPlayR))
     {
+        music.playChuck(menuButtonSound, 3, 0, 10);
         goToGameScreen = true;
         modeSelectionActive = false;
         showScorecard = false;
@@ -1559,15 +1578,20 @@ void mainMenu ::mouseMovement()
     }
     else if (SDL_HasIntersection(&mouseRect, &menuScorecardR))
     {
+        music.playChuck(menuButtonSound, 3, 0, 10);
         if (!showScorecard)
             showScorecard = true;
         else
             showScorecard = false;
     }
     else if (SDL_HasIntersection(&mouseRect, &menuQuitR))
+    {
+        music.playChuck(menuButtonSound, 3, 0, 10);
         gameIsRunning = false;
+    }
     else if (SDL_HasIntersection(&mouseRect, &menuDifficultyR))
     {
+        music.playChuck(menuButtonSound, 3, 0, 10);
         if (!modeSelectionActive)
             modeSelectionActive = true;
         else
@@ -1578,11 +1602,20 @@ void mainMenu ::mouseMovement()
     if (modeSelectionActive)
     {
         if (SDL_HasIntersection(&mouseRect, &modeEasyR))
+        {
+            music.playChuck(modeButtonSound, 3, 0, 10);
             gameMode = "Easy";
+        }
         else if (SDL_HasIntersection(&mouseRect, &modeHardR))
+        {
+            music.playChuck(modeButtonSound, 3, 0, 10);
             gameMode = "Hard";
+        }
         else if (SDL_HasIntersection(&mouseRect, &modeImpossibleR))
+        {
+            music.playChuck(modeButtonSound, 3, 0, 10);
             gameMode = "Impossible";
+        }
     }
 }
 
