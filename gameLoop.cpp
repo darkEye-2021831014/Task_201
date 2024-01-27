@@ -64,6 +64,7 @@ int snakeVelocity = snakeInitialVelocity,
 
 uint32_t startTime,
     startPlaying,
+    endPlaying,
     startPause;
 double totalPausedTime = 0.0,
        timePlayed = 0.0;
@@ -176,7 +177,6 @@ void processInput(Music &music)
                 if (!gameIsStarted && startTheGameNow)
                 {
                     music.playChuck(menuButtonSound, 3, 0, 10);
-                    startPlaying = SDL_GetTicks();
                     gameIsStarted = true;
                 }
                 else if (startTheGameNow)
@@ -336,7 +336,8 @@ public:
     void Render();
 
 private:
-    const int freeSpace = 11;
+    const int freeSpace = 11,
+              characterLimit = 14;
     // isTop is for the two obstacle that start from bottom & isBottom is for the other two
     bool isTop = false,
          isBottom = false,
@@ -359,23 +360,41 @@ public:
             printf("TTF failed to initialize\nError: %s\n",
                    TTF_GetError());
         }
+        getInitialDataFromFile();
+        // initialize only two fonts for better performance
+        fontMultiple = TTF_OpenFont(standardFont.c_str(), 24);
+        TTF_SetFontWrappedAlign(fontMultiple, TTF_WRAPPED_ALIGN_CENTER);
+
+        fontSingle = TTF_OpenFont(standardFontBold.c_str(), 32);
+        TTF_SetFontWrappedAlign(fontSingle, TTF_WRAPPED_ALIGN_CENTER);
     }
     ~Font()
     {
+        TTF_CloseFont(fontMultiple);
+        TTF_CloseFont(fontSingle);
         TTF_Quit();
     }
 
-    void Render(string filePath, int fontSize, string message, SDL_Color textColor, SDL_Rect &textRect)
+    void getInitialDataFromFile();
+
+    void RenderSingleLine(string message, SDL_Color textColor, SDL_Rect &textRect)
     {
-        TTF_Font *font = TTF_OpenFont(filePath.c_str(), fontSize);
-        TTF_SetFontWrappedAlign(font, TTF_WRAPPED_ALIGN_CENTER);
-        SDL_Surface *surface = TTF_RenderText_Blended_Wrapped(font, message.c_str(), textColor, textRect.w);
+        SDL_Surface *surface = TTF_RenderText_Blended_Wrapped(fontSingle, message.c_str(), textColor, textRect.w);
         SDL_Texture *texture = SDL_CreateTextureFromSurface(renderer, surface);
         SDL_FreeSurface(surface);
 
         SDL_RenderCopy(renderer, texture, nullptr, &textRect);
         SDL_DestroyTexture(texture);
-        TTF_CloseFont(font);
+    }
+
+    void RenderMultipleText(string message, SDL_Color textColor, SDL_Rect &textRect)
+    {
+        SDL_Surface *surface = TTF_RenderText_Blended_Wrapped(fontMultiple, message.c_str(), textColor, textRect.w);
+        SDL_Texture *texture = SDL_CreateTextureFromSurface(renderer, surface);
+        SDL_FreeSurface(surface);
+
+        SDL_RenderCopy(renderer, texture, nullptr, &textRect);
+        SDL_DestroyTexture(texture);
     }
 
     void renderAllTimeBestScores(Background &);
@@ -391,6 +410,19 @@ public:
         else
             textOpacity -= 10;
     }
+
+private:
+    TTF_Font *fontMultiple = nullptr,
+             *fontSingle = nullptr;
+    vector<pair<int, string>> allTimeBestScores, mostSurvivedInSeconds;
+    const int totalSavedScores = 15, totalSavedSurvivalTime = 10;
+    SDL_Rect
+        bestScoresRect = {screenBottomBoxRectangle.x, screenBottomBoxRectangle.y, screenBottomBoxRectangle.w, 60},
+        mostTimeSpentRect = {screenBottomLeftBox.x, screenBottomLeftBox.y, screenBottomLeftBox.w, 90};
+    SDL_Color newScore = {255, 0, 255, SDL_ALPHA_OPAQUE},
+              prevScore = {0, 255, 255, SDL_ALPHA_OPAQUE},
+              scoreColor = {0, 255, 255, SDL_ALPHA_OPAQUE},
+              timeColor = {0, 255, 255, SDL_ALPHA_OPAQUE};
 };
 
 class Collision
@@ -445,8 +477,7 @@ void destroyBackground(Fruit *fruit, Snake *snake)
     SDL_Quit();
 }
 
-void Update(Snake *snake, Collision &collision, Background &background, Music &music, Fruit *fruit,
-            Font &font, mainMenu &menu)
+void Update(Snake *snake, Collision &collision, Background &background, Music &music, Fruit *fruit, Font &font, mainMenu &menu)
 {
     SDL_RenderClear(renderer);
     background.Render();
@@ -468,8 +499,7 @@ void Update(Snake *snake, Collision &collision, Background &background, Music &m
     // check whether the snake eat the fruit or not
     if (collision.detectCollisionWithFruit(snake))
     {
-        music.playChuck(background.fruitEatingSound[rand() % totalFruitEatingSound], 2, 0,
-                        background.fadeInChunck);
+        music.playChuck(background.fruitEatingSound[rand() % totalFruitEatingSound], 2, 0, background.fadeInChunck);
 
         totalScore++;
         // check for bonus fruit
@@ -510,20 +540,22 @@ void Update(Snake *snake, Collision &collision, Background &background, Music &m
     font.blinkingEffect();
     // render regular fruit, score and snake
     fruit->Render(fruitControl, *textureFruit[pickFruit]);
-    font.Render(font.standardFontBold, 24, to_string(totalScore), {0, 0, 0, 255}, scoreTextRect);
+    font.RenderSingleLine(to_string(totalScore), {0, 0, 0, 255}, scoreTextRect);
     for (int i = 0; i < snakeBody.size(); i++)
         snake->Render(snakeBody[i], *textureSnakeSkin);
 
     // detect collision
     if (collision.detectCollision(background))
     {
+        if (gameIsStarted && !collisionDetected)
+            endPlaying = SDL_GetTicks();
         font.renderAllTimeBestScores(background);
 
         // render game over screen
         SDL_Rect gameOverRect = {middleScreenTextRect.x, middleScreenTextRect.y, middleScreenTextRect.w, 80};
-        font.Render(font.standardFont, 30, "Game Over\nFinal Score: " + to_string(totalScore), {0, 255, 255, font.textOpacity}, gameOverRect);
+        font.RenderSingleLine("Game Over\nFinal Score: " + to_string(totalScore), {0, 255, 255, font.textOpacity}, gameOverRect);
         gameOverRect.y += gameOverRect.h;
-        font.Render(font.standardFont, 30, "Survival Time: " + to_string((int)timePlayed) + " Seconds\nPress Space To Play Again", {255, 255, 0, font.textOpacity}, gameOverRect);
+        font.RenderSingleLine("Survival Time: " + to_string((int)timePlayed) + " Seconds\nPress Space To Play Again", {255, 255, 0, font.textOpacity}, gameOverRect);
 
         gameIsStarted = false;
         collisionDetected = true;
@@ -535,11 +567,8 @@ void Update(Snake *snake, Collision &collision, Background &background, Music &m
             collisionSoundPlayed = true;
         }
     }
-
-    // start the game from here
-    if (gameIsStarted)
-    {
-        // check what mode to run the game on
+    else
+    { // check what mode to run the game on
         if (gameMode == "Hard")
         {
             background.renderObstacles();
@@ -553,6 +582,14 @@ void Update(Snake *snake, Collision &collision, Background &background, Music &m
         }
         else
             absoluteSnakeVelocity = false;
+    }
+
+    // start the game from here
+    if (gameIsStarted)
+    {
+        // play background music
+        if (!Mix_PlayingMusic())
+            music.playMusic(background.backgroundMusic[rand() % totalBackgroundSound], 0, background.fadeInMusic);
         if (gameIsPaused)
         {
             if (background.obstacleMovingSpeed)
@@ -561,7 +598,7 @@ void Update(Snake *snake, Collision &collision, Background &background, Music &m
                 background.obstacleMovingSpeed = 0;
             }
             // render pause screen
-            font.Render(font.standardFont, 30, "Press Space To Resume", {255, 255, 255, font.textOpacity}, middleScreenTextRect);
+            font.RenderSingleLine("Press Space To Resume", {255, 255, 255, font.textOpacity}, middleScreenTextRect);
 
             if (!pauseScreenSoundPlayed)
             {
@@ -582,8 +619,6 @@ void Update(Snake *snake, Collision &collision, Background &background, Music &m
             }
             snake->updateSnakePosition(snakeVelocity);
 
-            if (!Mix_PlayingMusic())
-                music.playMusic(background.backgroundMusic[rand() % totalBackgroundSound], 0, background.fadeInMusic);
             if (pauseScreenSoundPlayed)
             {
                 music.playChuck(background.resumeSound, 0, 0, background.fadeInChunck);
@@ -603,14 +638,19 @@ void Update(Snake *snake, Collision &collision, Background &background, Music &m
     else if (goToGameScreen && !collisionDetected)
     {
         // render start screen
-        font.Render(font.standardFont, 30, "Press Space To Start", {255, 255, 255, font.textOpacity}, middleScreenTextRect);
+        font.RenderSingleLine("Press Space To Start", {255, 255, 255, font.textOpacity}, middleScreenTextRect);
 
         startTheGameNow = true;
+        startPlaying = SDL_GetTicks();
+        totalPausedTime = 0.0;
     }
 
     // vSync failed to activate so a 20 ms delay is the adjustment
     if (vSyncActive != 0)
+    {
+        SDL_Log("vSync Failed To Activate.\nUsing A Delay Of 20ms Instead!");
         SDL_Delay(20);
+    }
     SDL_RenderPresent(renderer);
 }
 
@@ -631,7 +671,6 @@ int main(int argc, char **argv)
         // reset the game
         if (collisionDetected && pressedKey == 'k')
         {
-            startPlaying = SDL_GetTicks();
             music.stopMusic();
             delete snake;
             delete fruit;
@@ -646,13 +685,9 @@ int main(int argc, char **argv)
 }
 
 // implimentation of all prototype functions
-void Font ::renderAllTimeBestScores(Background &background)
+void Font::getInitialDataFromFile()
 {
-    // calculate all time best
-    // there are five all time best scores are saved
-    string highestVelocityFromFile;
-    int totalSavedScores = 15;
-    vector<pair<int, string>> allTimeBestScores;
+    // populate saved highest scores
     ifstream in;
     in.open("./Files/saveHighestScore.txt");
     string getLineFromFile;
@@ -676,48 +711,10 @@ void Font ::renderAllTimeBestScores(Background &background)
 
         allTimeBestScores.push_back({stoi(getScoreFromLine), getNameFromLine});
     }
-    sort(allTimeBestScores.begin(), allTimeBestScores.end());
     in.close();
+    sort(allTimeBestScores.rbegin(), allTimeBestScores.rend());
 
-    SDL_Color newScore = {255, 10, 10, SDL_ALPHA_OPAQUE},
-              prevScore = {0, 255, 0, SDL_ALPHA_OPAQUE};
-    if (totalScore > allTimeBestScores[0].first && !newHighScore)
-    {
-        newHighScore = true;
-        allTimeBestScores[0].first = totalScore;
-        allTimeBestScores[0].second = background.userName + ':';
-        sort(allTimeBestScores.begin(), allTimeBestScores.end());
-    }
-
-    // render highest score
-    string highestScore = "All Time Best Score: " + to_string(allTimeBestScores[totalSavedScores - 1].first);
-    Render(standardFont, 36, highestScore, ((newHighScore) ? newScore : prevScore), screenTopTextRect);
-
-    // write to the score file
-    ofstream out;
-    out.open("./Files/saveHighestScore.txt");
-    for (int i = totalSavedScores - 1; i >= 0; i--)
-        out << allTimeBestScores[i].second << allTimeBestScores[i].first << endl;
-    out.close();
-
-    // show some best scores
-    SDL_Rect bestScoresRect = {screenBottomBoxRectangle.x, screenBottomBoxRectangle.y, screenBottomBoxRectangle.w, 50};
-    Render("Fonts/robotoMonoRegular.ttf", 24, "All Time Best Scores", {255, 0, 255, 255}, bestScoresRect);
-    reverse(allTimeBestScores.begin(), allTimeBestScores.end());
-    SDL_Color scoreColor = {0, 255, 255, 255};
-    bestScoresRect.y += bestScoresRect.h;
-    bestScoresRect.h = 30;
-    for (auto &bestScore : allTimeBestScores)
-    {
-        Render("Fonts/robotoMonoRegular.ttf", 22, bestScore.second + ' ' + to_string(bestScore.first), scoreColor, bestScoresRect);
-        scoreColor.r += 17;
-        scoreColor.g -= 17;
-        bestScoresRect.y += bestScoresRect.h;
-    }
-
-    // work with total survival time in seconds file here
-    int totalSavedSurvivalTime = 10;
-    vector<pair<int, string>> mostSurvivedInSeconds;
+    // populate saved survival times in seconds
     ifstream inTimeSpent;
     inTimeSpent.open("./Files/secondsSurvived.txt");
     for (int i = 0; i < totalSavedSurvivalTime; i++)
@@ -740,38 +737,77 @@ void Font ::renderAllTimeBestScores(Background &background)
 
         mostSurvivedInSeconds.push_back({stoi(getSecondsFromLine), getNameFromLine});
     }
-    sort(mostSurvivedInSeconds.begin(), mostSurvivedInSeconds.end());
     inTimeSpent.close();
+    sort(mostSurvivedInSeconds.rbegin(), mostSurvivedInSeconds.rend());
+}
 
-    if (!collisionDetected)
-        timePlayed = ((SDL_GetTicks() - startPlaying) - totalPausedTime) / 1000.0;
-    if (timePlayed > mostSurvivedInSeconds[0].first && !newMostSurvived)
+void Font ::renderAllTimeBestScores(Background &background)
+{
+    // check if the final score can be placed in the list of all time best scores
+    if (totalScore > allTimeBestScores[totalSavedScores - 1].first && !newHighScore)
     {
-        newMostSurvived = true;
-        mostSurvivedInSeconds[0].first = timePlayed;
-        mostSurvivedInSeconds[0].second = background.userName + ':';
-        sort(mostSurvivedInSeconds.begin(), mostSurvivedInSeconds.end());
+        newHighScore = true;
+        allTimeBestScores[totalSavedScores - 1].first = totalScore;
+        allTimeBestScores[totalSavedScores - 1].second = background.userName + ':';
+        sort(allTimeBestScores.rbegin(), allTimeBestScores.rend());
+
+        // write to the score file
+        ofstream out;
+        out.open("./Files/saveHighestScore.txt");
+        for (auto &bestScore : allTimeBestScores)
+            out << bestScore.second << bestScore.first << endl;
+        out.close();
     }
 
-    // write to the luckiest file
-    ofstream outTimeSpent;
-    outTimeSpent.open("./Files/secondsSurvived.txt");
-    for (int i = totalSavedSurvivalTime - 1; i >= 0; i--)
-        outTimeSpent << mostSurvivedInSeconds[i].second << mostSurvivedInSeconds[i].first << endl;
-    outTimeSpent.close();
+    // render highest score
+    int changeBy = 17;
+    (newHighScore) ? newScore.g += changeBy, newScore.b -= changeBy : prevScore.r += changeBy, prevScore.b -= changeBy;
+
+    string highestScore = "All Time Best Score: " + to_string(allTimeBestScores[0].first);
+    RenderSingleLine(highestScore, ((newHighScore) ? newScore : prevScore), screenTopTextRect);
+
+    // show some best scores
+    bestScoresRect.y = screenBottomBoxRectangle.y;
+    bestScoresRect.h = 60;
+    RenderSingleLine("All Time Best Scores", {255, 0, 255, 255}, bestScoresRect);
+    bestScoresRect.y += bestScoresRect.h;
+    bestScoresRect.h = 30;
+    for (auto &bestScore : allTimeBestScores)
+    {
+        RenderMultipleText(bestScore.second + ' ' + to_string(bestScore.first), scoreColor, bestScoresRect);
+        scoreColor.r += 51;
+        scoreColor.g -= 51;
+        bestScoresRect.y += bestScoresRect.h;
+    }
+
+    // calculate total survival time in seconds here
+    timePlayed = ((endPlaying - startPlaying) - totalPausedTime) / 1000.0;
+    if (timePlayed > mostSurvivedInSeconds[totalSavedSurvivalTime - 1].first && !newMostSurvived)
+    {
+        newMostSurvived = true;
+        mostSurvivedInSeconds[totalSavedSurvivalTime - 1].first = timePlayed;
+        mostSurvivedInSeconds[totalSavedSurvivalTime - 1].second = background.userName + ':';
+        sort(mostSurvivedInSeconds.rbegin(), mostSurvivedInSeconds.rend());
+
+        // write to the survuval seconds file
+        ofstream outTimeSpent;
+        outTimeSpent.open("./Files/secondsSurvived.txt");
+        for (auto &mostSurvived : mostSurvivedInSeconds)
+            outTimeSpent << mostSurvived.second << mostSurvived.first << endl;
+        outTimeSpent.close();
+    }
 
     // show some best survival records in seconds
-    SDL_Rect mostTimeSpentRect = {screenBottomLeftBox.x, screenBottomLeftBox.y, screenBottomLeftBox.w, 80};
-    Render("Fonts/robotoMonoRegular.ttf", 26, "All Time Best Survival Records In Seconds", {255, 0, 255, 255}, mostTimeSpentRect);
-    reverse(mostSurvivedInSeconds.begin(), mostSurvivedInSeconds.end());
-    SDL_Color timeColor = {0, 255, 255, 255};
-    mostTimeSpentRect.y += mostTimeSpentRect.h;
+    mostTimeSpentRect.y = screenBottomLeftBox.y;
+    mostTimeSpentRect.h = 120;
+    RenderSingleLine("All Time Best Survival Records In Seconds", {255, 0, 255, 255}, mostTimeSpentRect);
+    mostTimeSpentRect.y += mostTimeSpentRect.h + 10;
     mostTimeSpentRect.h = 35;
     for (auto &mostSpent : mostSurvivedInSeconds)
     {
-        Render("Fonts/robotoMonoRegular.ttf", 24, mostSpent.second + ' ' + to_string(mostSpent.first), timeColor, mostTimeSpentRect);
-        timeColor.r += 25;
-        timeColor.b -= 25;
+        RenderMultipleText(mostSpent.second + ' ' + to_string(mostSpent.first), timeColor, mostTimeSpentRect);
+        timeColor.r += 24;
+        timeColor.b -= 24;
         mostTimeSpentRect.y += mostTimeSpentRect.h;
     }
 }
@@ -888,9 +924,9 @@ void Background ::initializeBackground(void)
 
     // inititalize bottom left screen text rectangle
     screenBottomLeftBox.w = (middleScreenTextRect.x - boarderWidth);
-    screenBottomLeftBox.h = SCREEN_HEIGHT - 2 * boarderHeight - screenTopTextRect.h - 30;
+    screenBottomLeftBox.h = SCREEN_HEIGHT - 2 * boarderHeight - screenTopTextRect.h;
     screenBottomLeftBox.x = boarderWidth;
-    screenBottomLeftBox.y = screenTopTextRect.y + screenTopTextRect.h;
+    screenBottomLeftBox.y = screenTopTextRect.y + screenTopTextRect.h / 2;
 
     // initialize whole obstacles
     wholeObstacleOne.w = boarderWidth;
@@ -1001,6 +1037,8 @@ void Background ::resetGame()
     modeSelectionActive = false;
     absoluteSnakeVelocity = false;
     totalPausedTime = 0.0;
+    startPlaying = 0;
+    endPlaying = 0;
     timePlayed = 0.0;
     totalScore = 0;
     prevResult = 0;
@@ -1020,11 +1058,11 @@ void Background ::resetGame()
 void Background ::getUserName(void)
 {
     string userInput = "";
-    cout << "Enter Your Name Here: ";
+    cout << "Enter Your Name Here (LIMIT: " + to_string(characterLimit) + " CHARACTERS): ";
     getline(cin, userInput);
     for (int i = 0; i < userInput.size(); i++)
     {
-        if (userInput[i] == ':')
+        if (userInput[i] == ':' || i >= characterLimit)
             break;
         userName.push_back(userInput[i]);
     }
