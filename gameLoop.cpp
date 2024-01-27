@@ -23,7 +23,6 @@ bool gameIsRunning = false,
      gameIsPaused = false,
      fontIsInitialized = false,
      increaseOpacity = false,
-     collisionSoundPlayed = false,
      pauseScreenSoundPlayed = false,
      newHighScore = false,
      newMostSurvived = false,
@@ -193,7 +192,7 @@ void processInput(Music &music)
                     }
                 }
 
-                if (collisionDetected && collisionSoundPlayed)
+                if (collisionDetected)
                     pressedKey = 'k'; // k and space both key will do the same thing
                 break;
             case SDLK_q:
@@ -557,15 +556,14 @@ void Update(Snake *snake, Collision &collision, Background &background, Music &m
         gameOverRect.y += gameOverRect.h;
         font.RenderSingleLine("Survival Time: " + to_string((int)timePlayed) + " Seconds\nPress Space To Play Again", {255, 255, 0, font.textOpacity}, gameOverRect);
 
-        gameIsStarted = false;
-        collisionDetected = true;
-
-        if (!collisionSoundPlayed)
+        if (!collisionDetected)
         {
             music.stopMusic();
             music.playChuck(background.collisionSound[rand() % totalCollisionSound], -1, 0, background.fadeInChunck);
-            collisionSoundPlayed = true;
         }
+
+        gameIsStarted = false;
+        collisionDetected = true;
     }
     else
     { // check what mode to run the game on
@@ -1028,7 +1026,6 @@ void Background ::resetGame()
     keyWasPressed = false;
     gameIsPaused = false;
     increaseOpacity = false;
-    collisionSoundPlayed = false;
     pauseScreenSoundPlayed = false;
     newHighScore = false;
     newMostSurvived = false;
@@ -1214,16 +1211,16 @@ Fruit ::Fruit()
 
     while (true)
     {
+
+        fruitControl.x = rand() % SCREEN_WIDTH;
+        fruitControl.y = rand() % SCREEN_HEIGHT;
         while (SDL_HasIntersection(&fruitControl, &snakeBody[0]) ||
                SDL_HasIntersection(&fruitControl, &scoreTextRect) ||
                SDL_HasIntersection(&fruitControl, &boarderTopRect) ||
                SDL_HasIntersection(&fruitControl, &boarderBottomRect) ||
                SDL_HasIntersection(&fruitControl, &boarderLeftRect) ||
                SDL_HasIntersection(&fruitControl, &boarderRightRect))
-        {
-            fruitControl.x = rand() % SCREEN_WIDTH;
-            fruitControl.y = rand() % SCREEN_HEIGHT;
-        }
+            continue;
 
         if (gameMode != "Easy")
         {
@@ -1266,15 +1263,15 @@ void Fruit ::initializeBonusFruit()
         // avoid obstacle if exists
         if (gameMode != "Easy")
         {
-            if (SDL_HasIntersection(&fruitControl, &wholeObstacleOne) ||
-                SDL_HasIntersection(&fruitControl, &wholeObstacleTwo) ||
-                SDL_HasIntersection(&fruitControl, &wholeObstacleThree) ||
-                SDL_HasIntersection(&fruitControl, &wholeObstacleFour))
+            if (SDL_HasIntersection(&bonusFruitControl, &wholeObstacleOne) ||
+                SDL_HasIntersection(&bonusFruitControl, &wholeObstacleTwo) ||
+                SDL_HasIntersection(&bonusFruitControl, &wholeObstacleThree) ||
+                SDL_HasIntersection(&bonusFruitControl, &wholeObstacleFour))
                 continue;
             if (gameMode == "Impossible")
             {
-                if (SDL_HasIntersection(&fruitControl, &wholeObstacleFive) ||
-                    SDL_HasIntersection(&fruitControl, &wholeObstacleSix))
+                if (SDL_HasIntersection(&bonusFruitControl, &wholeObstacleFive) ||
+                    SDL_HasIntersection(&bonusFruitControl, &wholeObstacleSix))
                     continue;
             }
         }
